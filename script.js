@@ -148,13 +148,18 @@
     // Background
     initBackground();
 
-    // Mouse glow
-    document.addEventListener('mousemove', function(e) {
-      if (mouseGlow) {
-        mouseGlow.style.left = e.clientX + 'px';
-        mouseGlow.style.top = e.clientY + 'px';
-      }
-    });
+    // Mouse glow (non-touch devices)
+    if (!('ontouchstart' in window)) {
+      document.addEventListener('mousemove', function(e) {
+        if (mouseGlow) {
+          mouseGlow.style.left = e.clientX + 'px';
+          mouseGlow.style.top = e.clientY + 'px';
+        }
+      });
+    } else {
+      // Sembunyikan mouse glow di touch device
+      if (mouseGlow) mouseGlow.style.display = 'none';
+    }
 
     // Close modal saat klik di luar
     document.querySelectorAll('.modal-overlay').forEach(function(el) {
@@ -166,10 +171,14 @@
     });
 
     // Resize chart
+    var resizeTimer;
     window.addEventListener('resize', function() {
-      if (dashboard && dashboard.classList.contains('active')) {
-        drawChart();
-      }
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function() {
+        if (dashboard && dashboard.classList.contains('active')) {
+          drawChart();
+        }
+      }, 250);
     });
 
     // Ripple effect untuk button
@@ -191,6 +200,10 @@
     // Start
     if (startBtn) {
       startBtn.addEventListener('click', handleStart);
+      startBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        handleStart();
+      });
     }
     if (nameInput) {
       nameInput.addEventListener('keydown', function(e) {
@@ -276,7 +289,9 @@
 
     // Search & Filter
     if (searchInput) {
-      searchInput.addEventListener('input', renderHistory);
+      searchInput.addEventListener('input', function() {
+        renderHistory();
+      });
     }
     if (filterBtns) {
       filterBtns.forEach(function(btn) {
@@ -838,7 +853,8 @@
     window.addEventListener('resize', resize);
 
     var particles = [];
-    for (var i = 0; i < 70; i++) {
+    var particleCount = Math.min(70, Math.floor(window.innerWidth / 10));
+    for (var i = 0; i < particleCount; i++) {
       particles.push({
         x: Math.random() * w,
         y: Math.random() * h,
