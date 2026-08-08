@@ -20,7 +20,39 @@
 
   <!-- ===== ONBOARDING ===== -->
   <div id="onboarding" class="onboarding-overlay active">
-    <div class="onboarding-content">
+    <!-- Navbar Onboarding -->
+    <nav class="onboarding-nav" id="onboardingNav" aria-label="Navigasi Onboarding">
+      <div class="onboarding-nav-inner">
+        <div class="onboarding-nav-logo">✦ NEONVAULT</div>
+        <div class="onboarding-nav-actions">
+          <button class="onboarding-nav-link" onclick="navigateToRules()" aria-label="Aturan">Aturan</button>
+          <button class="onboarding-nav-link primary" onclick="startOnboarding()" aria-label="Mulai">Mulai</button>
+          <button class="onboarding-nav-hamburger" id="hamburgerBtn" aria-label="Buka menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </div>
+      <!-- Mobile Menu -->
+      <div class="onboarding-mobile-menu" id="onboardingMobileMenu">
+        <div class="onboarding-mobile-menu-header">
+          <span class="onboarding-mobile-logo">✦ NEONVAULT</span>
+          <button class="onboarding-mobile-close" id="mobileMenuClose" aria-label="Tutup menu">✕</button>
+        </div>
+        <div class="onboarding-mobile-menu-body">
+          <button class="onboarding-mobile-item" onclick="navigateToRules(); closeMobileMenu();">
+            <span class="onboarding-mobile-icon">📖</span> Aturan
+          </button>
+          <button class="onboarding-mobile-item" onclick="startOnboarding(); closeMobileMenu();">
+            <span class="onboarding-mobile-icon">🚀</span> Mulai NEONVAULT
+          </button>
+          <button class="onboarding-mobile-item" onclick="closeMobileMenu();">
+            <span class="onboarding-mobile-icon">ℹ️</span> Tentang
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="onboarding-content" id="onboardingContent">
       <div class="onboarding-icon">✦</div>
       <h1 class="onboarding-title">NEONVAULT</h1>
       <p class="onboarding-sub">Your Money. Your Goals. Your Future.</p>
@@ -55,7 +87,7 @@
     </main>
   </div>
 
-  <!-- ===== BOTTOM NAVIGATION (Mobile) ===== -->
+  <!-- ===== BOTTOM NAVIGATION ===== -->
   <nav class="bottom-nav" id="bottomNav" aria-label="Navigasi Utama">
     <button class="nav-item active" data-page="dashboard" aria-label="Beranda">
       <span class="nav-icon">🏠</span>

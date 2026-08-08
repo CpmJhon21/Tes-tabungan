@@ -1,7 +1,7 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2 - Fixed Reset + Notification
- * Version: 2.0.3
+ * app.js – NEONVAULT V2.0.2 - Full Fix
+ * Navbar Onboarding + Rules Page + Chart Fixes
  * ============================================================
  */
 
@@ -156,6 +156,58 @@
     return txs.filter(function(t) { return new Date(t.date) >= cutoff; });
   }
 
+  function getBalanceHistory(txs, days) {
+    var history = [];
+    var now = new Date();
+    var balance = 0;
+    
+    // Get transactions sorted by date
+    var sorted = txs.slice().sort(function(a, b) {
+      return new Date(a.date) - new Date(b.date);
+    });
+    
+    // Filter by days
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    var filtered = sorted.filter(function(t) { return new Date(t.date) >= cutoff; });
+    
+    // Build daily balance
+    var dailyMap = {};
+    filtered.forEach(function(t) {
+      var dateKey = new Date(t.date).toISOString().split('T')[0];
+      if (!dailyMap[dateKey]) dailyMap[dateKey] = 0;
+      if (t.type === 'income') dailyMap[dateKey] += t.amount;
+      else if (t.type === 'expense') dailyMap[dateKey] -= t.amount;
+    });
+    
+    // Get all dates in range
+    var dates = [];
+    for (var i = days - 1; i >= 0; i--) {
+      var d = new Date(now);
+      d.setDate(d.getDate() - i);
+      var dateKey = d.toISOString().split('T')[0];
+      dates.push(dateKey);
+    }
+    
+    // Calculate cumulative balance
+    var cumBalance = getTotalBalance(txs.filter(function(t) {
+      return new Date(t.date) < new Date(dates[0]);
+    }));
+    
+    dates.forEach(function(dateKey) {
+      cumBalance += (dailyMap[dateKey] || 0);
+      history.push({
+        date: dateKey,
+        balance: cumBalance,
+        label: new Date(dateKey).toLocaleDateString('id-ID', { weekday: 'short' }),
+        income: dailyMap[dateKey] > 0 ? dailyMap[dateKey] : 0,
+        expense: dailyMap[dateKey] < 0 ? Math.abs(dailyMap[dateKey]) : 0
+      });
+    });
+    
+    return history;
+  }
+
   function getSavingRate(txs, days) {
     var recent = getTransactionsByDate(txs, days || 30);
     var income = recent.filter(function(t) { return t.type === 'income'; })
@@ -267,7 +319,7 @@
   }
 
   // ============================================================
-  // 3. STORAGE MANAGEMENT with Migration
+  // 3. STORAGE MANAGEMENT
   // ============================================================
 
   var STORAGE_KEY = 'neonvault_data_v2';
@@ -367,18 +419,12 @@
     }
   }
 
-  // ============================================================
-  // 4. RESET FUNCTION - FIXED
-  // ============================================================
-
   function resetAllData() {
     try {
-      // 1. Hapus semua data dari localStorage
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NOTIFICATION_KEY);
       localStorage.removeItem('neonvault_last_reminder');
       
-      // 2. Hapus semua backup terkait
       var keys = Object.keys(localStorage);
       keys.forEach(function(key) {
         if (key.startsWith('neonvault_data_v2_backup_')) {
@@ -386,35 +432,26 @@
         }
       });
 
-      // 3. Reset state aplikasi di memory
       appData = getDefaultData();
       appData.settings.onboardingComplete = false;
       appData.settings.reminders = false;
       
-      // 4. Reset navigation state
       currentPage = 'dashboard';
       currentGoalId = null;
       pageHistory = [];
       transactionToUndo = null;
-      
-      // 5. Reset notification state
       notificationEnabled = false;
       
-      // 6. Reset browser history
       try {
         history.replaceState(
           { view: 'onboarding' },
           'NEONVAULT - Onboarding',
           window.location.pathname + window.location.search
         );
-      } catch (e) {
-        // Silent fail
-      }
+      } catch (e) {}
 
-      // 7. Simpan default data ke localStorage
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
 
-      // 8. Tampilkan onboarding
       showOnboardingAfterReset();
 
       console.log('✅ Reset complete - All data cleared');
@@ -426,37 +463,13 @@
   }
 
   function showOnboardingAfterReset() {
-    // Hide dashboard
-    if (dashboard) {
-      dashboard.classList.remove('active');
-    }
-    
-    // Hide name popup
-    if (namePopup) {
-      namePopup.classList.remove('active');
-    }
-    
-    // Show onboarding
-    if (onboarding) {
-      onboarding.classList.add('active');
-    }
-    
-    // Hide loading
-    if (loadingScreen) {
-      loadingScreen.classList.add('hidden');
-    }
-    
-    // Reset current page
+    if (dashboard) dashboard.classList.remove('active');
+    if (namePopup) namePopup.classList.remove('active');
+    if (onboarding) onboarding.classList.add('active');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
     currentPage = 'dashboard';
-    
-    // Clear main content
-    if (mainContent) {
-      mainContent.innerHTML = '';
-    }
-    
-    // Update nav buttons
+    if (mainContent) mainContent.innerHTML = '';
     updateNavButtons();
-    
     showToast('🗑️ Semua data telah direset', 'warning');
   }
 
@@ -490,7 +503,7 @@
   }
 
   // ============================================================
-  // 5. APPLICATION STATE
+  // 4. APPLICATION STATE
   // ============================================================
 
   var appData = null;
@@ -504,7 +517,7 @@
   var notificationEnabled = false;
 
   // ============================================================
-  // 6. DOM REFS
+  // 5. DOM REFS
   // ============================================================
 
   var loadingScreen = document.getElementById('loadingScreen');
@@ -522,7 +535,7 @@
   var bottomNav = document.getElementById('bottomNav');
 
   // ============================================================
-  // 7. TOAST NOTIFICATION
+  // 6. TOAST NOTIFICATION
   // ============================================================
 
   function showToast(message, type, undoCallback) {
@@ -546,17 +559,36 @@
   }
 
   // ============================================================
-  // 8. NAVIGATION SYSTEM
+  // 7. NAVIGATION SYSTEM
   // ============================================================
 
   function goBack() {
+    // Check if we're in rules page - go back to previous view
+    if (currentPage === 'rules') {
+      if (pageHistory.length > 0) {
+        var last = pageHistory.pop();
+        currentPage = last.page;
+        currentGoalId = last.params || null;
+        try { history.back(); } catch (e) {}
+        renderCurrentPage();
+        updateNavButtons();
+        return;
+      } else {
+        // If no history, go to onboarding if onboarding is active, else dashboard
+        if (onboarding && onboarding.classList.contains('active')) {
+          return;
+        } else {
+          navigateTo('dashboard');
+          return;
+        }
+      }
+    }
+    
     if (pageHistory.length > 0) {
       var last = pageHistory.pop();
       currentPage = last.page;
       currentGoalId = last.params || null;
-      try {
-        history.back();
-      } catch (e) {}
+      try { history.back(); } catch (e) {}
       renderCurrentPage();
       updateNavButtons();
     } else {
@@ -565,6 +597,11 @@
   }
 
   function navigateTo(page, params) {
+    // Don't navigate if onboarding is active and page is not 'rules'
+    if (onboarding && onboarding.classList.contains('active') && page !== 'rules' && page !== 'dashboard') {
+      return;
+    }
+    
     if (currentPage && currentPage !== page) {
       pageHistory.push({ page: currentPage, params: currentGoalId });
       if (pageHistory.length > 20) pageHistory.shift();
@@ -610,7 +647,115 @@
   });
 
   // ============================================================
-  // 9. MODAL FUNCTIONS
+  // 8. ONBOARDING NAVBAR FUNCTIONS
+  // ============================================================
+
+  function startOnboarding() {
+    if (onboardingStart) onboardingStart.click();
+  }
+
+  function navigateToRules() {
+    navigateTo('rules');
+  }
+
+  function closeMobileMenu() {
+    var menu = document.getElementById('onboardingMobileMenu');
+    var hamburger = document.getElementById('hamburgerBtn');
+    if (menu) {
+      menu.classList.remove('open');
+      if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function toggleMobileMenu() {
+    var menu = document.getElementById('onboardingMobileMenu');
+    var hamburger = document.getElementById('hamburgerBtn');
+    if (menu) {
+      menu.classList.toggle('open');
+      if (hamburger) {
+        var isOpen = menu.classList.contains('open');
+        hamburger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      }
+    }
+  }
+
+  // ============================================================
+  // 9. RULES PAGE
+  // ============================================================
+
+  function renderRulesPage() {
+    currentPage = 'rules';
+    
+    var html = '';
+    html += '<div class="rules-page">';
+    html += '<div class="rules-back">';
+    html += '<button class="back-button" onclick="window.goBack && window.goBack()">← Kembali</button>';
+    html += '</div>';
+    html += '<h1 class="rules-title">📖 ATURAN NEONVAULT</h1>';
+    html += '<p class="rules-subtitle">Panduan lengkap menggunakan NEONVAULT</p>';
+    
+    var rules = [
+      {
+        number: '01',
+        title: 'Tentang NEONVAULT',
+        content: 'NEONVAULT adalah aplikasi pengelola tabungan pribadi yang berjalan secara lokal tanpa membutuhkan login. Semua data tersimpan di perangkat Anda.'
+      },
+      {
+        number: '02',
+        title: 'Cara Kerja Saldo',
+        content: '<strong>Saldo = Pemasukan - Pengeluaran</strong><br>Saldo akan bertambah saat Anda mencatat pemasukan dan berkurang saat mencatat pengeluaran. Transaksi tabungan tidak mempengaruhi saldo utama karena dialokasikan ke target.'
+      },
+      {
+        number: '03',
+        title: 'Target Tabungan',
+        content: 'Buat target tabungan dengan menentukan nominal yang ingin dicapai. Tambahkan uang ke target secara berkala dan pantau progress sampai mencapai 100%.'
+      },
+      {
+        number: '04',
+        title: 'Transaksi',
+        content: '<span class="rules-icon">📈</span> <strong>Pemasukan</strong> → uang yang masuk.<br><span class="rules-icon">📉</span> <strong>Pengeluaran</strong> → uang yang keluar.<br><span class="rules-icon">💰</span> <strong>Tabungan</strong> → uang yang dialokasikan ke target.'
+      },
+      {
+        number: '05',
+        title: 'Perkembangan Saldo',
+        content: 'Grafik digunakan untuk melihat perubahan saldo berdasarkan transaksi yang sudah dicatat. Anda dapat memilih periode 7 hari, 30 hari, 3 bulan, atau 1 tahun.'
+      },
+      {
+        number: '06',
+        title: 'Penyimpanan Data',
+        content: '🔒 Data tersimpan secara lokal di perangkat/browser kamu.<br><br>⚠️ Menghapus data browser dapat menyebabkan data NEONVAULT ikut terhapus. Gunakan fitur <strong>Backup</strong> untuk mengamankan data.'
+      },
+      {
+        number: '07',
+        title: 'Backup & Restore',
+        content: 'Gunakan <strong>Backup</strong> untuk menyimpan salinan data NEONVAULT.<br>Gunakan <strong>Restore</strong> untuk mengembalikannya.<br><br>💡 Lakukan backup secara rutin untuk menghindari kehilangan data.'
+      },
+      {
+        number: '08',
+        title: 'Notifikasi',
+        content: '🔔 Pengingat menabung membutuhkan izin notifikasi dari browser. Jika izin ditolak, pengingat tidak dapat ditampilkan. Aktifkan di pengaturan browser Anda.'
+      }
+    ];
+    
+    rules.forEach(function(rule) {
+      html += '<div class="rules-section">';
+      html += '<div class="rules-section-number">' + rule.number + '</div>';
+      html += '<div class="rules-section-title">' + rule.title + '</div>';
+      html += '<div class="rules-section-content">' + rule.content + '</div>';
+      html += '</div>';
+    });
+    
+    html += '</div>';
+    
+    // Show rules in onboarding overlay
+    var content = document.getElementById('onboardingContent');
+    if (content) {
+      content.innerHTML = html;
+    }
+  }
+
+  // ============================================================
+  // 10. MODAL FUNCTIONS
   // ============================================================
 
   function closeModal(id) {
@@ -729,7 +874,7 @@
   }
 
   // ============================================================
-  // 10. GOAL FUNCTIONS
+  // 11. GOAL FUNCTIONS
   // ============================================================
 
   function openGoalModal(goalId) {
@@ -908,7 +1053,7 @@
   }
 
   // ============================================================
-  // 11. RENDER FUNCTIONS
+  // 12. RENDER FUNCTIONS
   // ============================================================
 
   function renderBackButton() {
@@ -931,7 +1076,6 @@
 
     var html = '';
 
-    // Balance Card
     html += '<div class="balance-card">';
     html += '<div class="balance-label">TOTAL SALDO</div>';
     html += '<div class="balance-amount">' + formatCurrency(balance) + '</div>';
@@ -950,7 +1094,6 @@
     html += '</div>';
     html += '</div>';
 
-    // Quick Stats
     html += '<div class="quick-stats">';
     html += '<div class="quick-stat glass"><div class="stat-number">' + txs.length +
       '</div><div class="stat-label">Transaksi</div></div>';
@@ -962,14 +1105,12 @@
       '</div><div class="stat-label">Aktif</div></div>';
     html += '</div>';
 
-    // Data Warning
     html += '<div class="data-warning">';
     html += '<span class="warning-icon">🔒</span>';
     html +=
       '<span>Data tersimpan secara lokal di perangkat ini. Jika browser atau data situs dihapus, data tabungan dapat ikut terhapus. <strong>Download backup</strong> secara rutin.</span>';
     html += '</div>';
 
-    // Goals Section
     html += '<div class="glass">';
     html += '<div class="section-header"><div class="section-title">🎯 Target Tabungan</div>' +
       '<button class="section-link" onclick="navigateTo(\'goals\')">Lihat Semua →</button></div>';
@@ -998,7 +1139,6 @@
     }
     html += '</div>';
 
-    // Recent Transactions
     html += '<div class="glass">';
     html += '<div class="section-header"><div class="section-title">📊 Transaksi Terbaru</div>' +
       '<button class="section-link" onclick="navigateTo(\'transactions\')">Lihat Semua →</button></div>';
@@ -1244,7 +1384,7 @@
   }
 
   // ============================================================
-  // 12. ANALYTICS FUNCTIONS
+  // 13. ANALYTICS FUNCTIONS (FIXED - Chart dengan data real)
   // ============================================================
 
   function renderAnalytics() {
@@ -1257,89 +1397,99 @@
     var totalExp = getTotalExpense(txs);
     var totalSav = getTotalSaving(txs);
     var totalGoalSavings = getTotalGoalSavings(goals);
+    var balance = getTotalBalance(txs);
     var dailyAvg = getDailyAverage(txs, 30);
     var monthlyAvg = dailyAvg * 30;
-    var savingRate = getSavingRate(txs, 30);
     var insights = generateInsights(txs, goals);
-
-    var monthlyData = getMonthlyTrend(txs, chartPeriod / 30 || 6);
-    var categoryData = getCategoryBreakdown(txs, 'expense');
-
-    var balanceData = monthlyData.map(function(d) {
-      return { label: d.month, value: d.balance };
-    });
-    var incomeData = monthlyData.map(function(d) {
-      return { label: d.month, value: d.income };
-    });
-    var expenseData = monthlyData.map(function(d) {
-      return { label: d.month, value: d.expense };
-    });
-    var pieData = categoryData.map(function(d) {
-      return { label: d.name, value: d.amount, color: d.percentage > 10 ? '#00e5ff' : '#7c4dff' };
-    });
 
     var periodOptions = [
       { label: '7 Hari', days: 7 },
       { label: '30 Hari', days: 30 },
-      { label: '90 Hari', days: 90 },
-      { label: '365 Hari', days: 365 }
+      { label: '3 Bulan', days: 90 },
+      { label: '1 Tahun', days: 365 }
     ];
+
+    // Get balance history for chart
+    var historyData = getBalanceHistory(txs, chartPeriod);
+    var hasData = historyData.length > 0 && historyData.some(function(d) { return d.balance !== 0; });
 
     var html = '';
     html += '<div class="page-container active">';
-    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Financial Analytics</div>';
+    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Perkembangan Saldo</div>';
 
-    html +=
-      '<div class="analytics-insights" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
-    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(totalSav +
-      totalGoalSavings) + '</div><div class="insight-label">Total Tabungan</div></div>';
+    // Stats
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
+    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(balance) +
+      '</div><div class="insight-label">Saldo Saat Ini</div></div>';
+    
+    // Calculate change
+    if (historyData.length >= 2) {
+      var firstBalance = historyData[0]?.balance || 0;
+      var lastBalance = historyData[historyData.length - 1]?.balance || 0;
+      var change = firstBalance > 0 ? ((lastBalance - firstBalance) / firstBalance) * 100 : 0;
+      html += '<div class="insight-card glass"><div class="insight-value" style="color:' + (change >= 0 ? '#00ff88' : '#ff4d6d') + ';">' +
+        (change >= 0 ? '↑' : '↓') + ' ' + Math.abs(change).toFixed(1) + '%</div><div class="insight-label">Perubahan</div></div>';
+    } else {
+      html += '<div class="insight-card glass"><div class="insight-value" style="color:#88a0b8;">-</div><div class="insight-label">Perubahan</div></div>';
+    }
+    
     html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(monthlyAvg) +
       '</div><div class="insight-label">Rata-rata / Bulan</div></div>';
-    html += '<div class="insight-card glass"><div class="insight-value">' + getActiveGoals(goals).length +
-      '</div><div class="insight-label">Target Aktif</div></div>';
-    html += '<div class="insight-card glass"><div class="insight-value">' + getCompletedGoals(goals).length +
-      '</div><div class="insight-label">Target Tercapai</div></div>';
+    html += '<div class="insight-card glass"><div class="insight-value">' + txs.length +
+      '</div><div class="insight-label">Total Transaksi</div></div>';
     html += '</div>';
 
+    // Period filter
     html += '<div class="glass" style="margin-bottom:16px;">';
     html +=
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
-    html += '<span style="font-weight:600;">📊 Perkembangan Saldo</span>';
+    html += '<span style="font-weight:600;">📊 Grafik Saldo</span>';
     html += '<div class="period-filters">';
     periodOptions.forEach(function(p) {
       html += '<button class="period-btn ' + (p.days === chartPeriod ? 'active' : '') +
         '" onclick="setChartPeriod(' + p.days + ')">' + p.label + '</button>';
     });
     html += '</div></div>';
-    html += '<div class="analytics-chart"><canvas id="balanceChart"></canvas></div>';
+
+    // Chart
+    if (!hasData) {
+      html += '<div class="empty-state" style="padding:30px 16px;">';
+      html += '<div class="empty-icon">📈</div>';
+      html += '<div class="empty-title">Belum ada data perkembangan saldo</div>';
+      html += '<div class="empty-desc">Mulai mencatat pemasukan, pengeluaran, atau tabungan untuk melihat perkembangan saldo kamu.</div>';
+      html += '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button>';
+      html += '</div>';
+    } else {
+      html += '<div class="analytics-chart" style="position:relative;">';
+      html += '<canvas id="balanceChart"></canvas>';
+      html += '<div id="chartTooltip" class="chart-tooltip" style="display:none;"></div>';
+      html += '</div>';
+    }
     html += '</div>';
 
-    html += '<div class="analytics-grid" style="margin-bottom:16px;">';
-    html += '<div class="glass full-width">';
-    html += '<div style="font-weight:600;margin-bottom:8px;">📊 Pemasukan vs Pengeluaran</div>';
-    html += '<div class="analytics-chart" style="height:150px;"><canvas id="incomeExpenseChart"></canvas></div>';
-    html += '</div></div>';
+    // Insights
+    if (hasData) {
+      html += '<div class="glass">';
+      html += '<div style="font-weight:600;margin-bottom:8px;">💡 Insight Keuangan</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      insights.forEach(function(i) {
+        html += '<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:12px;border-left:3px solid ' +
+          (i.type === 'warning' ? '#ff4d6d' : i.type === 'positive' ? '#00ff88' : '#00e5ff') + ';">';
+        html += '<span style="font-size:0.85rem;">' + i.message + '</span></div>';
+      });
+      html += '</div></div>';
+    }
 
-    html += '<div class="analytics-grid">';
-    html += '<div class="glass"><div style="font-weight:600;margin-bottom:8px;">📊 Kategori Pengeluaran</div>';
-    html += '<div class="analytics-chart" style="height:180px;"><canvas id="categoryChart"></canvas></div></div>';
-    html += '<div class="glass"><div style="font-weight:600;margin-bottom:8px;">💡 Insight Keuangan</div>';
-    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-    insights.forEach(function(i) {
-      html += '<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:12px;border-left:3px solid ' +
-        (i.type === 'warning' ? '#ff4d6d' : i.type === 'positive' ? '#00ff88' : '#00e5ff') + ';">';
-      html += '<span style="font-size:0.85rem;">' + i.message + '</span></div>';
-    });
-    html += '</div></div></div>';
     html += '</div>';
 
     mainContent.innerHTML = html;
 
-    setTimeout(function() {
-      drawLineChart('balanceChart', balanceData);
-      drawBarChart('incomeExpenseChart', incomeData, expenseData);
-      drawDoughnutChart('categoryChart', pieData);
-    }, 100);
+    // Render chart after DOM update
+    if (hasData) {
+      setTimeout(function() {
+        drawBalanceChart('balanceChart', historyData);
+      }, 100);
+    }
   }
 
   function setChartPeriod(days) {
@@ -1348,10 +1498,10 @@
   }
 
   // ============================================================
-  // 13. CHART FUNCTIONS
+  // 14. CHART FUNCTIONS (FIXED - Dengan Tooltip)
   // ============================================================
 
-  function drawLineChart(canvasId, data) {
+  function drawBalanceChart(canvasId, data) {
     var canvas = document.getElementById(canvasId);
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
@@ -1359,28 +1509,24 @@
 
     var rect = canvas.parentElement?.getBoundingClientRect();
     var W = rect?.width || canvas.clientWidth || 400;
-    var H = rect?.height || 200;
+    var H = rect?.height || 220;
 
     canvas.width = W;
     canvas.height = H;
     canvas.style.width = W + 'px';
     canvas.style.height = H + 'px';
 
-    var pad = { top: 20, right: 16, bottom: 28, left: 16 };
+    var pad = { top: 30, right: 20, bottom: 30, left: 20 };
     var chartW = W - pad.left - pad.right;
     var chartH = H - pad.top - pad.bottom;
 
     ctx.clearRect(0, 0, W, H);
 
     if (!data || data.length === 0) {
-      ctx.fillStyle = '#88a0b8';
-      ctx.font = '14px Rajdhani';
-      ctx.textAlign = 'center';
-      ctx.fillText('Belum ada data', W / 2, H / 2);
       return;
     }
 
-    var values = data.map(function(d) { return d.value; });
+    var values = data.map(function(d) { return d.balance; });
     var labels = data.map(function(d) { return d.label; });
     var maxVal = Math.max(1, Math.max.apply(null, values.map(Math.abs)));
     var minVal = Math.min(0, Math.min.apply(null, values));
@@ -1392,9 +1538,11 @@
       fill: isDark ? 'rgba(0,229,255,0.05)' : 'rgba(124,77,255,0.05)',
       grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
       text: isDark ? '#88a0b8' : '#6a6a8e',
-      point: isDark ? '#00e5ff' : '#7c4dff'
+      point: isDark ? '#00e5ff' : '#7c4dff',
+      pointHover: isDark ? '#ffffff' : '#1a1a2e'
     };
 
+    // Grid
     ctx.strokeStyle = colors.grid;
     ctx.lineWidth = 0.5;
     for (var g = 0; g <= 4; g++) {
@@ -1405,20 +1553,43 @@
       ctx.stroke();
     }
 
+    // Line
     ctx.beginPath();
     ctx.strokeStyle = colors.line;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.shadowColor = colors.line + '66';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
+
+    var points = [];
     for (var i = 0; i < values.length; i++) {
       var x = pad.left + (i / (values.length - 1 || 1)) * chartW;
       var y = pad.top + chartH - ((values[i] - minVal) / range) * chartH;
+      points.push({ x: x, y: y, index: i });
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
 
+    // Area fill
+    ctx.beginPath();
+    var firstX = pad.left;
+    var firstY = pad.top + chartH - ((values[0] - minVal) / range) * chartH;
+    ctx.moveTo(firstX, pad.top + chartH);
+    ctx.lineTo(firstX, firstY);
+    for (var a = 0; a < values.length; a++) {
+      var ax = pad.left + (a / (values.length - 1 || 1)) * chartW;
+      var ay = pad.top + chartH - ((values[a] - minVal) / range) * chartH;
+      ctx.lineTo(ax, ay);
+    }
+    var lastX = pad.left + chartW;
+    ctx.lineTo(lastX, pad.top + chartH);
+    ctx.closePath();
+    ctx.fillStyle = colors.fill;
+    ctx.fill();
+
+    // Points
+    var tooltipData = [];
     for (var p = 0; p < values.length; p++) {
       var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
       var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
@@ -1431,194 +1602,130 @@
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      ctx.fillStyle = colors.text;
-      ctx.font = '8px Rajdhani';
-      ctx.textAlign = 'center';
-      ctx.fillText(labels[p], px, H - 4);
-    }
-  }
+      // Label
+      if (values.length <= 10) {
+        ctx.fillStyle = colors.text;
+        ctx.font = '8px Rajdhani';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[p], px, H - 4);
+      }
 
-  function drawBarChart(canvasId, incomeData, expenseData) {
-    var canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    var rect = canvas.parentElement?.getBoundingClientRect();
-    var W = rect?.width || canvas.clientWidth || 400;
-    var H = rect?.height || 150;
-
-    canvas.width = W;
-    canvas.height = H;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-
-    var pad = { top: 20, right: 16, bottom: 28, left: 16 };
-    var chartW = W - pad.left - pad.right;
-    var chartH = H - pad.top - pad.bottom;
-
-    ctx.clearRect(0, 0, W, H);
-
-    if (!incomeData || incomeData.length === 0) {
-      ctx.fillStyle = '#88a0b8';
-      ctx.font = '14px Rajdhani';
-      ctx.textAlign = 'center';
-      ctx.fillText('Belum ada data', W / 2, H / 2);
-      return;
+      tooltipData.push({
+        x: px,
+        y: py,
+        index: p,
+        date: data[p].date,
+        balance: data[p].balance,
+        income: data[p].income || 0,
+        expense: data[p].expense || 0,
+        label: labels[p]
+      });
     }
 
-    var allValues = incomeData.map(function(d) { return d.value; }).concat(expenseData.map(function(d) { return -d
-        .value; }));
-    var maxVal = Math.max(1, Math.max.apply(null, allValues.map(Math.abs)));
+    // Tooltip interaction
+    var tooltip = document.getElementById('chartTooltip');
+    if (tooltip) {
+      canvas.addEventListener('mousemove', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var mouseX = e.clientX - rect.left;
+        var mouseY = e.clientY - rect.top;
 
-    var isDark = !document.body.classList.contains('light-mode');
-    var colors = {
-      income: isDark ? '#00ff88' : '#00a86b',
-      expense: isDark ? '#ff4d6d' : '#e74c3c',
-      grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-      text: isDark ? '#88a0b8' : '#6a6a8e'
-    };
+        var found = false;
+        for (var t = 0; t < tooltipData.length; t++) {
+          var pt = tooltipData[t];
+          var dist = Math.sqrt(Math.pow(mouseX - pt.x, 2) + Math.pow(mouseY - pt.y, 2));
+          if (dist < 20) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (pt.x + 10) + 'px';
+            tooltip.style.top = (pt.y - 40) + 'px';
+            tooltip.innerHTML = 
+              '<div class="tooltip-date">' + formatDate(pt.date) + '</div>' +
+              '<div class="tooltip-amount">' + formatCurrency(pt.balance) + '</div>' +
+              (pt.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt.income) + '</div>' : '') +
+              (pt.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt.expense) + '</div>' : '');
+            
+            // Highlight point
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
+            ctx.fillStyle = colors.pointHover;
+            ctx.shadowColor = colors.point + '88';
+            ctx.shadowBlur = 25;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          tooltip.style.display = 'none';
+          // Redraw points (simplified - just redraw chart)
+          drawBalanceChart(canvasId, data);
+        }
+      });
 
-    var barWidth = Math.min(30, (chartW / incomeData.length) * 0.35);
-    var gap = (chartW - barWidth * 2 * incomeData.length) / (incomeData.length + 1);
+      canvas.addEventListener('mouseleave', function() {
+        tooltip.style.display = 'none';
+      });
 
-    ctx.strokeStyle = colors.grid;
-    ctx.lineWidth = 0.5;
-    for (var g = 0; g <= 4; g++) {
-      var y = pad.top + (chartH / 4) * g;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, y);
-      ctx.lineTo(W - pad.right, y);
-      ctx.stroke();
+      // Touch support
+      canvas.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        var rect = canvas.getBoundingClientRect();
+        var touch = e.touches[0];
+        var touchX = touch.clientX - rect.left;
+        var touchY = touch.clientY - rect.top;
+
+        for (var t2 = 0; t2 < tooltipData.length; t2++) {
+          var pt2 = tooltipData[t2];
+          var dist2 = Math.sqrt(Math.pow(touchX - pt2.x, 2) + Math.pow(touchY - pt2.y, 2));
+          if (dist2 < 30) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (pt2.x + 10) + 'px';
+            tooltip.style.top = (pt2.y - 40) + 'px';
+            tooltip.innerHTML = 
+              '<div class="tooltip-date">' + formatDate(pt2.date) + '</div>' +
+              '<div class="tooltip-amount">' + formatCurrency(pt2.balance) + '</div>' +
+              (pt2.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt2.income) + '</div>' : '') +
+              (pt2.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt2.expense) + '</div>' : '');
+            break;
+          }
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', function() {
+        setTimeout(function() {
+          tooltip.style.display = 'none';
+        }, 2000);
+      });
     }
 
-    incomeData.forEach(function(d, i) {
-      var x1 = pad.left + gap + i * (barWidth * 2 + gap);
-      var h1 = (d.value / maxVal) * chartH;
-      var y1 = pad.top + chartH - h1;
-
-      ctx.fillStyle = colors.income;
-      ctx.shadowColor = colors.income + '44';
-      ctx.shadowBlur = 8;
-      ctx.fillRect(x1, y1, barWidth, h1);
-      ctx.shadowBlur = 0;
-
-      var x2 = x1 + barWidth;
-      var h2 = (expenseData[i]?.value / maxVal) * chartH || 0;
-      var y2 = pad.top + chartH - h2;
-
-      ctx.fillStyle = colors.expense;
-      ctx.shadowColor = colors.expense + '44';
-      ctx.shadowBlur = 8;
-      ctx.fillRect(x2, y2, barWidth, h2);
-      ctx.shadowBlur = 0;
-
+    // X-axis labels for more than 10 values (show every nth)
+    if (values.length > 10) {
+      var step = Math.ceil(values.length / 8);
       ctx.fillStyle = colors.text;
       ctx.font = '7px Rajdhani';
       ctx.textAlign = 'center';
-      ctx.fillText(d.label, x1 + barWidth, H - 4);
-    });
-  }
-
-  function drawDoughnutChart(canvasId, data) {
-    var canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    var rect = canvas.parentElement?.getBoundingClientRect();
-    var size = Math.min(rect?.width || 200, 200);
-    var W = size;
-    var H = size;
-
-    canvas.width = W;
-    canvas.height = H;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-
-    ctx.clearRect(0, 0, W, H);
-
-    if (!data || data.length === 0) {
-      ctx.fillStyle = '#88a0b8';
-      ctx.font = '14px Rajdhani';
-      ctx.textAlign = 'center';
-      ctx.fillText('Belum ada data', W / 2, H / 2);
-      return;
-    }
-
-    var total = data.reduce(function(s, d) { return s + d.value; }, 0);
-    if (total === 0) {
-      ctx.fillStyle = '#88a0b8';
-      ctx.font = '14px Rajdhani';
-      ctx.textAlign = 'center';
-      ctx.fillText('Tidak ada data', W / 2, H / 2);
-      return;
-    }
-
-    var colors = ['#00e5ff', '#7c4dff', '#00ff88', '#ff6b6b', '#ffd93d', '#6bcbff', '#ff8a5c', '#a8e6cf'];
-    var cx = W / 2;
-    var cy = H / 2;
-    var radius = Math.min(W, H) / 2 - 20;
-    var innerRadius = radius * 0.55;
-    var startAngle = -Math.PI / 2;
-
-    data.forEach(function(item, i) {
-      var sliceAngle = (item.value / total) * 2 * Math.PI;
-      var color = item.color || colors[i % colors.length];
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
-      ctx.arc(cx, cy, innerRadius, startAngle + sliceAngle, startAngle, true);
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.shadowColor = color + '44';
-      ctx.shadowBlur = 10;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      if (sliceAngle > 0.25) {
-        var midAngle = startAngle + sliceAngle / 2;
-        var labelRadius = (radius + innerRadius) / 2;
-        var lx = cx + Math.cos(midAngle) * labelRadius;
-        var ly = cy + Math.sin(midAngle) * labelRadius;
-        ctx.fillStyle = '#fff';
-        ctx.font = '9px Rajdhani';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        var percent = Math.round((item.value / total) * 100);
-        if (percent >= 10) {
-          ctx.fillText(percent + '%', lx, ly);
-        }
+      for (var l = 0; l < values.length; l += step) {
+        var lx = pad.left + (l / (values.length - 1 || 1)) * chartW;
+        ctx.fillText(labels[l], lx, H - 4);
       }
-
-      startAngle += sliceAngle;
-    });
-
-    ctx.fillStyle = '#e0f0ff';
-    ctx.font = 'bold 12px Rajdhani';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Total', cx, cy - 8);
-    ctx.fillStyle = '#00e5ff';
-    ctx.font = 'bold 10px Orbitron';
-    ctx.fillText(formatCurrency(total), cx, cy + 16);
+    }
   }
 
   // ============================================================
-  // 14. SETTINGS FUNCTIONS (FIXED - Reset + Notification)
+  // 15. SETTINGS FUNCTIONS
   // ============================================================
 
   function renderSettings() {
     currentPage = 'settings';
     var settings = appData.settings || {};
 
-    // Check notification permission
     var hasNotificationSupport = 'Notification' in window;
     var permission = hasNotificationSupport ? Notification.permission : 'denied';
     var isPermissionGranted = permission === 'granted';
     var isPermissionDenied = permission === 'denied';
 
-    // Load notification state
     var notificationState = localStorage.getItem(NOTIFICATION_KEY);
     var isNotificationOn = notificationState === 'enabled' && isPermissionGranted;
 
@@ -1639,19 +1746,17 @@
       '" onclick="setTheme(\'system\')">🖥️ System</button>';
     html += '</div></div>';
 
-    // Notification - NEW DESIGN
+    // Notification
     html += '<div class="glass" style="margin-bottom:12px;">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🔔 Pengingat Menabung</h4>';
     
     if (isPermissionDenied) {
-      // Permission denied state
       html += '<div class="notification-permission-denied">';
       html += '<span class="denied-icon">❌</span>';
       html += '<span>Notifikasi diblokir oleh browser. Silakan aktifkan izin notifikasi di pengaturan browser.</span>';
       html += '</div>';
     } else {
-      // Toggle UI
       html += '<div class="notification-toggle-wrapper">';
       html += '<div class="notification-toggle-info">';
       html += '<div class="toggle-label">';
@@ -1676,7 +1781,6 @@
       html += '</div>';
       html += '</div>';
       
-      // Show info if permission not granted yet
       if (hasNotificationSupport && permission === 'default') {
         html += '<div style="margin-top:8px;font-size:0.7rem;color:#88a0b8;">';
         html += '💡 Klik toggle untuk meminta izin notifikasi browser.';
@@ -1712,7 +1816,7 @@
     html += '<div class="glass" style="margin-bottom:12px;">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
-    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.3</p>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.2</p>';
     html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
     html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
     html +=
@@ -1733,11 +1837,10 @@
   }
 
   // ============================================================
-  // 15. NOTIFICATION FUNCTIONS - FIXED
+  // 16. NOTIFICATION FUNCTIONS
   // ============================================================
 
   function toggleNotification() {
-    // Check if Notification API is supported
     if (!('Notification' in window)) {
       showToast('Browser tidak mendukung notifikasi', 'error');
       return;
@@ -1746,22 +1849,18 @@
     var permission = Notification.permission;
     var currentState = localStorage.getItem(NOTIFICATION_KEY) === 'enabled';
 
-    // If permission denied, show message
     if (permission === 'denied') {
       showToast('❌ Notifikasi diblokir oleh browser. Aktifkan di pengaturan browser.', 'error');
       renderSettings();
       return;
     }
 
-    // If permission not granted yet, request it
     if (permission === 'default') {
       requestNotificationPermission();
       return;
     }
 
-    // Permission is granted, toggle state
     if (currentState) {
-      // Turn OFF
       localStorage.removeItem(NOTIFICATION_KEY);
       notificationEnabled = false;
       if (reminderInterval) {
@@ -1770,7 +1869,6 @@
       showToast('🔕 Pengingat menabung dinonaktifkan', 'warning');
       renderSettings();
     } else {
-      // Turn ON
       localStorage.setItem(NOTIFICATION_KEY, 'enabled');
       notificationEnabled = true;
       startReminders();
@@ -1807,7 +1905,6 @@
   function startReminders() {
     stopReminders();
     if (!notificationEnabled) {
-      // Check if notification is enabled in localStorage
       var savedState = localStorage.getItem(NOTIFICATION_KEY);
       if (savedState === 'enabled' && Notification.permission === 'granted') {
         notificationEnabled = true;
@@ -1854,7 +1951,7 @@
   }
 
   // ============================================================
-  // 16. THEME FUNCTIONS
+  // 17. THEME FUNCTIONS
   // ============================================================
 
   function setTheme(theme) {
@@ -1872,7 +1969,7 @@
   }
 
   // ============================================================
-  // 17. BACKUP / RESTORE FUNCTIONS
+  // 18. BACKUP / RESTORE FUNCTIONS
   // ============================================================
 
   function downloadBackup() {
@@ -1920,7 +2017,7 @@
   }
 
   // ============================================================
-  // 18. RESET MODAL FUNCTIONS
+  // 19. RESET MODAL FUNCTIONS
   // ============================================================
 
   function openResetModal() {
@@ -1946,12 +2043,8 @@
   }
 
   function confirmReset() {
-    // Create backup before reset
     downloadBackup();
-    
-    // Reset all data
     var success = resetAllData();
-    
     if (success) {
       closeModal('resetModal');
       showToast('🗑️ Semua data telah direset', 'warning');
@@ -1961,12 +2054,16 @@
   }
 
   // ============================================================
-  // 19. RENDER CURRENT PAGE
+  // 20. RENDER CURRENT PAGE
   // ============================================================
 
   function renderCurrentPage() {
-    // Check if onboarding is active - don't render pages if onboarding is showing
+    // Check if onboarding is active
     if (onboarding && onboarding.classList.contains('active')) {
+      // If rules page is active inside onboarding, render rules
+      if (currentPage === 'rules') {
+        renderRulesPage();
+      }
       return;
     }
     
@@ -1988,6 +2085,11 @@
         break;
       case 'settings':
         renderSettings();
+        break;
+      case 'rules':
+        // Rules should only render inside onboarding
+        if (onboarding) onboarding.classList.add('active');
+        renderRulesPage();
         break;
       default:
         renderDashboard();
@@ -2015,13 +2117,13 @@
   }
 
   // ============================================================
-  // 20. NAVIGATION SETUP
+  // 21. NAVIGATION SETUP
   // ============================================================
 
   function setupNavigation() {
+    // Bottom navigation
     document.querySelectorAll('.nav-item').forEach(function(item) {
       item.addEventListener('click', function() {
-        // Don't navigate if onboarding is active
         if (onboarding && onboarding.classList.contains('active')) return;
         var page = this.dataset.page;
         currentGoalId = null;
@@ -2029,13 +2131,40 @@
       });
     });
 
+    // Onboarding navigation
+    var hamburgerBtn = document.getElementById('hamburgerBtn');
+    var mobileClose = document.getElementById('mobileMenuClose');
+    
+    if (hamburgerBtn) {
+      hamburgerBtn.addEventListener('click', toggleMobileMenu);
+    }
+    if (mobileClose) {
+      mobileClose.addEventListener('click', closeMobileMenu);
+    }
+
+    // Close mobile menu on outside click
+    document.addEventListener('click', function(e) {
+      var menu = document.getElementById('onboardingMobileMenu');
+      var hamburger = document.getElementById('hamburgerBtn');
+      if (menu && menu.classList.contains('open')) {
+        if (!menu.contains(e.target) && !hamburger.contains(e.target)) {
+          closeMobileMenu();
+        }
+      }
+    });
+
+    // Expose navigation functions globally
     window.navigateTo = navigateTo;
     window.goBack = goBack;
     window.toggleNotification = toggleNotification;
+    window.navigateToRules = navigateToRules;
+    window.startOnboarding = startOnboarding;
+    window.closeMobileMenu = closeMobileMenu;
+    window.toggleMobileMenu = toggleMobileMenu;
   }
 
   // ============================================================
-  // 21. STYLES INJECTION
+  // 22. STYLES INJECTION
   // ============================================================
 
   function injectStyles() {
@@ -2354,7 +2483,7 @@
   }
 
   // ============================================================
-  // 22. EXPOSE GLOBALLY
+  // 23. EXPOSE GLOBALLY
   // ============================================================
 
   window.openTransactionModal = openTransactionModal;
@@ -2378,22 +2507,23 @@
   window.goBack = goBack;
   window.toggleNotification = toggleNotification;
   window.setChartPeriod = setChartPeriod;
+  window.navigateToRules = navigateToRules;
+  window.startOnboarding = startOnboarding;
+  window.closeMobileMenu = closeMobileMenu;
+  window.toggleMobileMenu = toggleMobileMenu;
 
   // ============================================================
-  // 23. INITIALIZATION
+  // 24. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
-      // Load notification state
       var savedNotification = localStorage.getItem(NOTIFICATION_KEY);
       notificationEnabled = savedNotification === 'enabled';
 
-      // Load data
       appData = loadData();
       applyTheme(appData.settings.theme || 'dark');
 
-      // Inject styles
       injectStyles();
 
       // Handle onboarding
@@ -2418,7 +2548,7 @@
         }
       }
 
-      // Onboarding start
+      // Onboarding start button
       onboardingStart.addEventListener('click', function() {
         appData.settings.onboardingComplete = true;
         saveData(appData);
@@ -2454,6 +2584,7 @@
         }
       });
 
+      // Settings toggle
       settingsToggle.addEventListener('click', function() {
         currentGoalId = null;
         navigateTo('settings');
@@ -2476,7 +2607,7 @@
         }
       }
 
-      console.log('🚀 NEONVAULT V2.0.3 initialized successfully!');
+      console.log('🚀 NEONVAULT V2.0.2 initialized successfully!');
       console.log('📊 Data:', appData);
 
     } catch (e) {
