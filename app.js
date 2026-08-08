@@ -1,7 +1,6 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2.0.2 - Full Fix
- * Navbar Onboarding + Rules Page + Chart Fixes
+ * app.js – NEONVAULT V2.0.2 - Fixed Navigation & State
  * ============================================================
  */
 
@@ -9,7 +8,70 @@
   'use strict';
 
   // ============================================================
-  // 1. HELPERS & UTILITIES
+  // 1. APP MODES
+  // ============================================================
+
+  var APP_MODES = {
+    ONBOARDING: 'onboarding',
+    APP: 'app'
+  };
+
+  // ============================================================
+  // 2. APP STATE
+  // ============================================================
+
+  var appState = {
+    mode: APP_MODES.ONBOARDING,
+    currentView: 'onboarding', // onboarding, rules, about, dashboard, goals, transactions, analytics, settings
+    currentGoalId: null,
+    pageHistory: [],
+    isOnboardingMenuOpen: false,
+    isAppMenuOpen: false
+  };
+
+  // ============================================================
+  // 3. DATA STATE
+  // ============================================================
+
+  var appData = null;
+  var transactionToUndo = null;
+  var selectedColor = '#00e5ff';
+  var chartPeriod = 30;
+  var reminderInterval = null;
+  var notificationEnabled = false;
+
+  // ============================================================
+  // 4. STORAGE KEYS
+  // ============================================================
+
+  var STORAGE_KEY = 'neonvault_data_v2';
+  var NOTIFICATION_KEY = 'neonvault_notifications';
+  var ONBOARDING_KEY = 'neonvault_onboarding';
+
+  // ============================================================
+  // 5. DOM REFS
+  // ============================================================
+
+  var loadingScreen = document.getElementById('loadingScreen');
+  var onboardingContainer = document.getElementById('onboardingContainer');
+  var onboardingContent = document.getElementById('onboardingContent');
+  var onboardingStartBtn = document.getElementById('onboardingStartBtn');
+  var onboardingHamburger = document.getElementById('onboardingHamburger');
+  var onboardingMobileMenu = document.getElementById('onboardingMobileMenu');
+  var onboardingMobileClose = document.getElementById('onboardingMobileClose');
+  var appContainer = document.getElementById('appContainer');
+  var appMain = document.getElementById('appMain');
+  var appNav = document.getElementById('appNav');
+  var appBottomNav = document.getElementById('appBottomNav');
+  var appClock = document.getElementById('appClock');
+  var appDate = document.getElementById('appDate');
+  var namePopup = document.getElementById('namePopup');
+  var nameInput = document.getElementById('nameInput');
+  var startBtn = document.getElementById('startBtn');
+  var toastContainer = document.getElementById('toastContainer');
+
+  // ============================================================
+  // 6. HELPERS & UTILITIES
   // ============================================================
 
   function generateId() {
@@ -59,32 +121,19 @@
 
   function getCategoryIcon(cat) {
     var icons = {
-      food: '🍔',
-      transport: '🚗',
-      shopping: '🛒',
-      salary: '💼',
-      bonus: '🎁',
-      home: '🏠',
-      education: '🎓',
-      entertainment: '🎮',
-      savings: '💰',
-      other: '📦'
+      food: '🍔', transport: '🚗', shopping: '🛒', salary: '💼',
+      bonus: '🎁', home: '🏠', education: '🎓', entertainment: '🎮',
+      savings: '💰', other: '📦'
     };
     return icons[cat] || '📦';
   }
 
   function getCategoryName(cat) {
     var names = {
-      food: 'Makanan',
-      transport: 'Transportasi',
-      shopping: 'Belanja',
-      salary: 'Gaji',
-      bonus: 'Bonus',
-      home: 'Rumah',
-      education: 'Pendidikan',
-      entertainment: 'Hiburan',
-      savings: 'Tabungan',
-      other: 'Lainnya'
+      food: 'Makanan', transport: 'Transportasi', shopping: 'Belanja',
+      salary: 'Gaji', bonus: 'Bonus', home: 'Rumah',
+      education: 'Pendidikan', entertainment: 'Hiburan',
+      savings: 'Tabungan', other: 'Lainnya'
     };
     return names[cat] || 'Lainnya';
   }
@@ -106,7 +155,7 @@
   }
 
   // ============================================================
-  // 2. FINANCE CALCULATIONS
+  // 7. FINANCE CALCULATIONS
   // ============================================================
 
   function getTotalIncome(txs) {
@@ -159,19 +208,14 @@
   function getBalanceHistory(txs, days) {
     var history = [];
     var now = new Date();
-    var balance = 0;
-    
-    // Get transactions sorted by date
     var sorted = txs.slice().sort(function(a, b) {
       return new Date(a.date) - new Date(b.date);
     });
     
-    // Filter by days
     var cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     var filtered = sorted.filter(function(t) { return new Date(t.date) >= cutoff; });
     
-    // Build daily balance
     var dailyMap = {};
     filtered.forEach(function(t) {
       var dateKey = new Date(t.date).toISOString().split('T')[0];
@@ -180,7 +224,6 @@
       else if (t.type === 'expense') dailyMap[dateKey] -= t.amount;
     });
     
-    // Get all dates in range
     var dates = [];
     for (var i = days - 1; i >= 0; i--) {
       var d = new Date(now);
@@ -189,7 +232,6 @@
       dates.push(dateKey);
     }
     
-    // Calculate cumulative balance
     var cumBalance = getTotalBalance(txs.filter(function(t) {
       return new Date(t.date) < new Date(dates[0]);
     }));
@@ -319,11 +361,8 @@
   }
 
   // ============================================================
-  // 3. STORAGE MANAGEMENT
+  // 8. STORAGE MANAGEMENT
   // ============================================================
-
-  var STORAGE_KEY = 'neonvault_data_v2';
-  var NOTIFICATION_KEY = 'neonvault_notifications';
 
   function getDefaultData() {
     return {
@@ -419,10 +458,16 @@
     }
   }
 
+  // ============================================================
+  // 9. RESET FUNCTION - FIXED
+  // ============================================================
+
   function resetAllData() {
     try {
+      // 1. Clear storage
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NOTIFICATION_KEY);
+      localStorage.removeItem(ONBOARDING_KEY);
       localStorage.removeItem('neonvault_last_reminder');
       
       var keys = Object.keys(localStorage);
@@ -432,27 +477,36 @@
         }
       });
 
+      // 2. Reset memory state
       appData = getDefaultData();
       appData.settings.onboardingComplete = false;
       appData.settings.reminders = false;
       
-      currentPage = 'dashboard';
-      currentGoalId = null;
-      pageHistory = [];
+      // 3. Reset navigation state
+      appState.mode = APP_MODES.ONBOARDING;
+      appState.currentView = 'onboarding';
+      appState.currentGoalId = null;
+      appState.pageHistory = [];
+      appState.isOnboardingMenuOpen = false;
+      appState.isAppMenuOpen = false;
+      
       transactionToUndo = null;
       notificationEnabled = false;
-      
+
+      // 4. Reset browser history
       try {
         history.replaceState(
-          { view: 'onboarding' },
+          { mode: APP_MODES.ONBOARDING, view: 'onboarding' },
           'NEONVAULT - Onboarding',
           window.location.pathname + window.location.search
         );
       } catch (e) {}
 
+      // 5. Save default data
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
 
-      showOnboardingAfterReset();
+      // 6. Re-render UI from scratch
+      renderApp();
 
       console.log('✅ Reset complete - All data cleared');
       return true;
@@ -460,17 +514,6 @@
       console.error('Reset error:', e);
       return false;
     }
-  }
-
-  function showOnboardingAfterReset() {
-    if (dashboard) dashboard.classList.remove('active');
-    if (namePopup) namePopup.classList.remove('active');
-    if (onboarding) onboarding.classList.add('active');
-    if (loadingScreen) loadingScreen.classList.add('hidden');
-    currentPage = 'dashboard';
-    if (mainContent) mainContent.innerHTML = '';
-    updateNavButtons();
-    showToast('🗑️ Semua data telah direset', 'warning');
   }
 
   function exportData() {
@@ -503,39 +546,7 @@
   }
 
   // ============================================================
-  // 4. APPLICATION STATE
-  // ============================================================
-
-  var appData = null;
-  var currentPage = 'dashboard';
-  var currentGoalId = null;
-  var transactionToUndo = null;
-  var selectedColor = '#00e5ff';
-  var chartPeriod = 30;
-  var reminderInterval = null;
-  var pageHistory = [];
-  var notificationEnabled = false;
-
-  // ============================================================
-  // 5. DOM REFS
-  // ============================================================
-
-  var loadingScreen = document.getElementById('loadingScreen');
-  var onboarding = document.getElementById('onboarding');
-  var onboardingStart = document.getElementById('onboardingStart');
-  var namePopup = document.getElementById('namePopup');
-  var nameInput = document.getElementById('nameInput');
-  var startBtn = document.getElementById('startBtn');
-  var dashboard = document.getElementById('dashboard');
-  var mainContent = document.getElementById('mainContent');
-  var toastContainer = document.getElementById('toastContainer');
-  var clockEl = document.getElementById('realTimeClock');
-  var dateEl = document.getElementById('realTimeDate');
-  var settingsToggle = document.getElementById('settingsToggle');
-  var bottomNav = document.getElementById('bottomNav');
-
-  // ============================================================
-  // 6. TOAST NOTIFICATION
+  // 10. TOAST NOTIFICATION
   // ============================================================
 
   function showToast(message, type, undoCallback) {
@@ -559,211 +570,961 @@
   }
 
   // ============================================================
-  // 7. NAVIGATION SYSTEM
+  // 11. NAVIGATION SYSTEM - FIXED
   // ============================================================
-
-  function goBack() {
-    // Check if we're in rules page - go back to previous view
-    if (currentPage === 'rules') {
-      if (pageHistory.length > 0) {
-        var last = pageHistory.pop();
-        currentPage = last.page;
-        currentGoalId = last.params || null;
-        try { history.back(); } catch (e) {}
-        renderCurrentPage();
-        updateNavButtons();
-        return;
-      } else {
-        // If no history, go to onboarding if onboarding is active, else dashboard
-        if (onboarding && onboarding.classList.contains('active')) {
-          return;
-        } else {
-          navigateTo('dashboard');
-          return;
-        }
-      }
-    }
-    
-    if (pageHistory.length > 0) {
-      var last = pageHistory.pop();
-      currentPage = last.page;
-      currentGoalId = last.params || null;
-      try { history.back(); } catch (e) {}
-      renderCurrentPage();
-      updateNavButtons();
-    } else {
-      navigateTo('dashboard');
-    }
-  }
-
-  function navigateTo(page, params) {
-    // Don't navigate if onboarding is active and page is not 'rules'
-    if (onboarding && onboarding.classList.contains('active') && page !== 'rules' && page !== 'dashboard') {
-      return;
-    }
-    
-    if (currentPage && currentPage !== page) {
-      pageHistory.push({ page: currentPage, params: currentGoalId });
-      if (pageHistory.length > 20) pageHistory.shift();
-    }
-
-    currentPage = page;
-    if (params !== undefined) {
-      currentGoalId = params;
-    }
-
-    try {
-      var state = { page: page, goalId: currentGoalId };
-      var url = '#' + page + (currentGoalId ? '/' + currentGoalId : '');
-      history.pushState(state, '', url);
-    } catch (e) {}
-
-    renderCurrentPage();
-    updateNavButtons();
-  }
-
-  function updateNavButtons() {
-    document.querySelectorAll('.nav-item').forEach(function(item) {
-      item.classList.toggle('active', item.dataset.page === currentPage);
-    });
-  }
-
-  window.addEventListener('popstate', function(e) {
-    if (e.state && e.state.page) {
-      currentPage = e.state.page;
-      currentGoalId = e.state.goalId || null;
-      if (pageHistory.length > 0 && pageHistory[pageHistory.length - 1].page === currentPage) {
-        pageHistory.pop();
-      }
-      renderCurrentPage();
-      updateNavButtons();
-    } else {
-      currentPage = 'dashboard';
-      currentGoalId = null;
-      pageHistory = [];
-      renderCurrentPage();
-      updateNavButtons();
-    }
-  });
-
-  // ============================================================
-  // 8. ONBOARDING NAVBAR FUNCTIONS
-  // ============================================================
-
-  function startOnboarding() {
-    if (onboardingStart) onboardingStart.click();
-  }
 
   function navigateToRules() {
-    navigateTo('rules');
+    if (appState.mode !== APP_MODES.ONBOARDING) return;
+    
+    appState.currentView = 'rules';
+    appState.pageHistory.push({ view: 'onboarding' });
+    
+    try {
+      history.pushState({ mode: APP_MODES.ONBOARDING, view: 'rules' }, 'Aturan NEONVAULT', '#rules');
+    } catch (e) {}
+    
+    renderOnboardingPage('rules');
+    closeOnboardingMenu();
   }
 
-  function closeMobileMenu() {
-    var menu = document.getElementById('onboardingMobileMenu');
-    var hamburger = document.getElementById('hamburgerBtn');
-    if (menu) {
-      menu.classList.remove('open');
-      if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
-    }
+  function navigateToAbout() {
+    if (appState.mode !== APP_MODES.ONBOARDING) return;
+    
+    appState.currentView = 'about';
+    appState.pageHistory.push({ view: 'onboarding' });
+    
+    try {
+      history.pushState({ mode: APP_MODES.ONBOARDING, view: 'about' }, 'Tentang NEONVAULT', '#about');
+    } catch (e) {}
+    
+    renderOnboardingPage('about');
+    closeOnboardingMenu();
   }
 
-  function toggleMobileMenu() {
-    var menu = document.getElementById('onboardingMobileMenu');
-    var hamburger = document.getElementById('hamburgerBtn');
-    if (menu) {
-      menu.classList.toggle('open');
-      if (hamburger) {
-        var isOpen = menu.classList.contains('open');
-        hamburger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  function goBackOnboarding() {
+    if (appState.mode !== APP_MODES.ONBOARDING) return;
+    
+    if (appState.pageHistory.length > 0) {
+      var last = appState.pageHistory.pop();
+      appState.currentView = last.view || 'onboarding';
+      
+      try {
+        history.back();
+      } catch (e) {}
+      
+      if (appState.currentView === 'onboarding') {
+        renderOnboardingHome();
+      } else {
+        renderOnboardingPage(appState.currentView);
       }
+    } else {
+      appState.currentView = 'onboarding';
+      renderOnboardingHome();
+    }
+  }
+
+  function navigateToApp(view) {
+    if (appState.mode !== APP_MODES.APP) return;
+    
+    appState.currentView = view || 'dashboard';
+    
+    try {
+      history.pushState({ mode: APP_MODES.APP, view: appState.currentView }, 'NEONVAULT', '#' + appState.currentView);
+    } catch (e) {}
+    
+    renderAppView(appState.currentView);
+    updateAppNav(appState.currentView);
+  }
+
+  function goBackApp() {
+    if (appState.mode !== APP_MODES.APP) return;
+    
+    if (appState.pageHistory.length > 0) {
+      var last = appState.pageHistory.pop();
+      appState.currentView = last.view || 'dashboard';
+      
+      try {
+        history.back();
+      } catch (e) {}
+      
+      renderAppView(appState.currentView);
+      updateAppNav(appState.currentView);
+    } else {
+      appState.currentView = 'dashboard';
+      renderAppView('dashboard');
+      updateAppNav('dashboard');
     }
   }
 
   // ============================================================
-  // 9. RULES PAGE
+  // 12. RENDER FUNCTIONS
   // ============================================================
+
+  function renderApp() {
+    // Hide loading
+    loadingScreen.classList.add('hidden');
+
+    if (appState.mode === APP_MODES.ONBOARDING) {
+      // Show onboarding, hide app
+      onboardingContainer.classList.add('active');
+      appContainer.classList.remove('active');
+      
+      if (appState.currentView === 'onboarding') {
+        renderOnboardingHome();
+      } else if (appState.currentView === 'rules') {
+        renderOnboardingPage('rules');
+      } else if (appState.currentView === 'about') {
+        renderOnboardingPage('about');
+      } else {
+        renderOnboardingHome();
+      }
+    } else {
+      // Show app, hide onboarding
+      onboardingContainer.classList.remove('active');
+      appContainer.classList.add('active');
+      
+      renderAppView(appState.currentView || 'dashboard');
+      updateAppNav(appState.currentView || 'dashboard');
+    }
+  }
+
+  // ============================================================
+  // 12a. ONBOARDING RENDER
+  // ============================================================
+
+  function renderOnboardingHome() {
+    onboardingContent.innerHTML = `
+      <div class="onboarding-hero">
+        <div class="onboarding-icon">✦</div>
+        <h1 class="onboarding-title">NEONVAULT</h1>
+        <p class="onboarding-sub">Your Money. Your Goals. Your Future.</p>
+        <p class="onboarding-desc">Kelola tabunganmu dengan mudah tanpa login.</p>
+        <button class="neon-btn primary" onclick="App.startApp()">🚀 Mulai</button>
+      </div>
+    `;
+  }
+
+  function renderOnboardingPage(page) {
+    if (page === 'rules') {
+      onboardingContent.innerHTML = renderRulesPage();
+    } else if (page === 'about') {
+      onboardingContent.innerHTML = renderAboutPage();
+    }
+  }
 
   function renderRulesPage() {
-    currentPage = 'rules';
-    
-    var html = '';
-    html += '<div class="rules-page">';
-    html += '<div class="rules-back">';
-    html += '<button class="back-button" onclick="window.goBack && window.goBack()">← Kembali</button>';
-    html += '</div>';
-    html += '<h1 class="rules-title">📖 ATURAN NEONVAULT</h1>';
-    html += '<p class="rules-subtitle">Panduan lengkap menggunakan NEONVAULT</p>';
-    
     var rules = [
-      {
-        number: '01',
-        title: 'Tentang NEONVAULT',
-        content: 'NEONVAULT adalah aplikasi pengelola tabungan pribadi yang berjalan secara lokal tanpa membutuhkan login. Semua data tersimpan di perangkat Anda.'
-      },
-      {
-        number: '02',
-        title: 'Cara Kerja Saldo',
-        content: '<strong>Saldo = Pemasukan - Pengeluaran</strong><br>Saldo akan bertambah saat Anda mencatat pemasukan dan berkurang saat mencatat pengeluaran. Transaksi tabungan tidak mempengaruhi saldo utama karena dialokasikan ke target.'
-      },
-      {
-        number: '03',
-        title: 'Target Tabungan',
-        content: 'Buat target tabungan dengan menentukan nominal yang ingin dicapai. Tambahkan uang ke target secara berkala dan pantau progress sampai mencapai 100%.'
-      },
-      {
-        number: '04',
-        title: 'Transaksi',
-        content: '<span class="rules-icon">📈</span> <strong>Pemasukan</strong> → uang yang masuk.<br><span class="rules-icon">📉</span> <strong>Pengeluaran</strong> → uang yang keluar.<br><span class="rules-icon">💰</span> <strong>Tabungan</strong> → uang yang dialokasikan ke target.'
-      },
-      {
-        number: '05',
-        title: 'Perkembangan Saldo',
-        content: 'Grafik digunakan untuk melihat perubahan saldo berdasarkan transaksi yang sudah dicatat. Anda dapat memilih periode 7 hari, 30 hari, 3 bulan, atau 1 tahun.'
-      },
-      {
-        number: '06',
-        title: 'Penyimpanan Data',
-        content: '🔒 Data tersimpan secara lokal di perangkat/browser kamu.<br><br>⚠️ Menghapus data browser dapat menyebabkan data NEONVAULT ikut terhapus. Gunakan fitur <strong>Backup</strong> untuk mengamankan data.'
-      },
-      {
-        number: '07',
-        title: 'Backup & Restore',
-        content: 'Gunakan <strong>Backup</strong> untuk menyimpan salinan data NEONVAULT.<br>Gunakan <strong>Restore</strong> untuk mengembalikannya.<br><br>💡 Lakukan backup secara rutin untuk menghindari kehilangan data.'
-      },
-      {
-        number: '08',
-        title: 'Notifikasi',
-        content: '🔔 Pengingat menabung membutuhkan izin notifikasi dari browser. Jika izin ditolak, pengingat tidak dapat ditampilkan. Aktifkan di pengaturan browser Anda.'
-      }
+      { number: '01', title: 'Tentang NEONVAULT', content: 'NEONVAULT adalah aplikasi pengelola tabungan pribadi yang berjalan secara lokal tanpa membutuhkan login. Semua data tersimpan di perangkat Anda.' },
+      { number: '02', title: 'Cara Kerja Saldo', content: '<strong>Saldo = Pemasukan - Pengeluaran</strong><br>Saldo akan bertambah saat Anda mencatat pemasukan dan berkurang saat mencatat pengeluaran. Transaksi tabungan tidak mempengaruhi saldo utama karena dialokasikan ke target.' },
+      { number: '03', title: 'Target Tabungan', content: 'Buat target tabungan dengan menentukan nominal yang ingin dicapai. Tambahkan uang ke target secara berkala dan pantau progress sampai mencapai 100%.' },
+      { number: '04', title: 'Transaksi', content: '<span class="icon">📈</span> <strong>Pemasukan</strong> → uang yang masuk.<br><span class="icon">📉</span> <strong>Pengeluaran</strong> → uang yang keluar.<br><span class="icon">💰</span> <strong>Tabungan</strong> → uang yang dialokasikan ke target.' },
+      { number: '05', title: 'Perkembangan Saldo', content: 'Grafik digunakan untuk melihat perubahan saldo berdasarkan transaksi yang sudah dicatat. Anda dapat memilih periode 7 hari, 30 hari, 3 bulan, atau 1 tahun.' },
+      { number: '06', title: 'Penyimpanan Data', content: '🔒 Data tersimpan secara lokal di perangkat/browser kamu.<br><br>⚠️ Menghapus data browser dapat menyebabkan data NEONVAULT ikut terhapus. Gunakan fitur <strong>Backup</strong> untuk mengamankan data.' },
+      { number: '07', title: 'Backup & Restore', content: 'Gunakan <strong>Backup</strong> untuk menyimpan salinan data NEONVAULT.<br>Gunakan <strong>Restore</strong> untuk mengembalikannya.<br><br>💡 Lakukan backup secara rutin untuk menghindari kehilangan data.' },
+      { number: '08', title: 'Notifikasi', content: '🔔 Pengingat menabung membutuhkan izin notifikasi dari browser. Jika izin ditolak, pengingat tidak dapat ditampilkan. Aktifkan di pengaturan browser Anda.' }
     ];
     
+    var html = '<div class="onboarding-page">';
+    html += '<div class="page-back"><button class="back-button" onclick="App.goBackOnboarding()">← Kembali</button></div>';
+    html += '<h1 class="page-title">📖 ATURAN NEONVAULT</h1>';
+    html += '<p class="page-subtitle">Panduan lengkap menggunakan NEONVAULT</p>';
+    
     rules.forEach(function(rule) {
-      html += '<div class="rules-section">';
-      html += '<div class="rules-section-number">' + rule.number + '</div>';
-      html += '<div class="rules-section-title">' + rule.title + '</div>';
-      html += '<div class="rules-section-content">' + rule.content + '</div>';
+      html += '<div class="section">';
+      html += '<div class="section-number">' + rule.number + '</div>';
+      html += '<div class="section-title">' + rule.title + '</div>';
+      html += '<div class="section-content">' + rule.content + '</div>';
       html += '</div>';
     });
     
     html += '</div>';
+    return html;
+  }
+
+  function renderAboutPage() {
+    return `
+      <div class="onboarding-page">
+        <div class="page-back"><button class="back-button" onclick="App.goBackOnboarding()">← Kembali</button></div>
+        <h1 class="page-title">ℹ️ TENTANG NEONVAULT</h1>
+        <p class="page-subtitle">Informasi tentang aplikasi NEONVAULT</p>
+        
+        <div class="section">
+          <div class="section-title">Apa itu NEONVAULT?</div>
+          <div class="section-content">
+            NEONVAULT adalah aplikasi pengelola tabungan pribadi dengan desain cyberpunk futuristik. 
+            Aplikasi ini dirancang untuk membantu Anda mengelola keuangan dengan cara yang menyenangkan dan modern.
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Fitur Utama</div>
+          <div class="section-content">
+            <strong>💰 Dashboard</strong> — Lihat total saldo, pemasukan, dan pengeluaran.<br>
+            <strong>🎯 Target Tabungan</strong> — Buat dan pantau target tabungan.<br>
+            <strong>📊 Transaksi</strong> — Catat pemasukan, pengeluaran, dan tabungan.<br>
+            <strong>📈 Analitik</strong> — Lihat perkembangan saldo dan insight keuangan.<br>
+            <strong>🔒 Data Lokal</strong> — Semua data tersimpan di perangkat Anda.
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Versi</div>
+          <div class="section-content">
+            <strong>NEONVAULT v2.0.2</strong><br>
+            Personal Savings Manager
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Data & Privasi</div>
+          <div class="section-content">
+            🔒 Data tersimpan secara lokal di perangkat Anda.<br>
+            🔒 NEONVAULT tidak membutuhkan login.<br>
+            🔒 Tidak ada data yang dikirim ke server.<br>
+            ⚠️ Hapus data browser dapat menghapus data NEONVAULT.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // 12b. APPLICATION RENDER
+  // ============================================================
+
+  function renderAppView(view) {
+    switch (view) {
+      case 'dashboard':
+        renderDashboard();
+        break;
+      case 'goals':
+        renderGoals();
+        break;
+      case 'goalDetail':
+        renderGoalDetail();
+        break;
+      case 'transactions':
+        renderTransactions();
+        break;
+      case 'analytics':
+        renderAnalytics();
+        break;
+      case 'settings':
+        renderSettings();
+        break;
+      default:
+        renderDashboard();
+    }
+  }
+
+  function updateAppNav(activeView) {
+    document.querySelectorAll('.app-nav-link, .app-bottom-item').forEach(function(item) {
+      item.classList.toggle('active', item.dataset.page === activeView);
+    });
+  }
+
+  // ============================================================
+  // 13. DASHBOARD RENDER
+  // ============================================================
+
+  function renderDashboard() {
+    var data = appData;
+    var txs = data.transactions || [];
+    var goals = data.goals || [];
+    var totalInc = getTotalIncome(txs);
+    var totalExp = getTotalExpense(txs);
+    var totalSav = getTotalSaving(txs);
+    var balance = getTotalBalance(txs);
+    var goalSavings = getTotalGoalSavings(goals);
+    var recentTxs = txs.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    }).slice(0, 5);
+    var activeGoals = getActiveGoals(goals).slice(0, 3);
+
+    var html = '';
+
+    html += '<div class="balance-card glass">';
+    html += '<div class="balance-label">TOTAL SALDO</div>';
+    html += '<div class="balance-amount">' + formatCurrency(balance) + '</div>';
+    html += '<div class="balance-stats">';
+    html += '<div class="balance-stat"><div class="stat-label">Pemasukan</div><div class="stat-value income">' +
+      formatCurrency(totalInc) + '</div></div>';
+    html += '<div class="balance-stat"><div class="stat-label">Pengeluaran</div><div class="stat-value expense">' +
+      formatCurrency(totalExp) + '</div></div>';
+    html += '<div class="balance-stat"><div class="stat-label">Tabungan</div><div class="stat-value savings">' +
+      formatCurrency(totalSav + goalSavings) + '</div></div>';
+    html += '</div>';
+    html += '<div class="balance-actions">';
+    html += '<button class="neon-btn primary" onclick="App.openTransactionModal(\'income\')">+ Tambah Uang</button>';
+    html += '<button class="neon-btn danger" onclick="App.openTransactionModal(\'expense\')">− Ambil Uang</button>';
+    html += '<button class="neon-btn" onclick="App.openTransactionModal(\'saving\')">💰 Menabung</button>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '<div class="quick-stats">';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + txs.length +
+      '</div><div class="stat-label">Transaksi</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + goals.length +
+      '</div><div class="stat-label">Target</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + getCompletedGoals(goals).length +
+      '</div><div class="stat-label">Tercapai</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + getActiveGoals(goals).length +
+      '</div><div class="stat-label">Aktif</div></div>';
+    html += '</div>';
+
+    html += '<div class="data-warning">';
+    html += '<span class="warning-icon">🔒</span>';
+    html +=
+      '<span>Data tersimpan secara lokal di perangkat ini. Jika browser atau data situs dihapus, data tabungan dapat ikut terhapus. <strong>Download backup</strong> secara rutin.</span>';
+    html += '</div>';
+
+    html += '<div class="glass">';
+    html += '<div class="section-header"><div class="section-title">🎯 Target Tabungan</div>' +
+      '<button class="section-link" onclick="App.navigateToApp(\'goals\')">Lihat Semua →</button></div>';
+
+    if (activeGoals.length > 0) {
+      activeGoals.forEach(function(g) {
+        var progress = calculateProgress(g);
+        var isCompleted = g.saved >= g.target;
+        html += '<div class="goal-item" onclick="App.navigateToApp(\'goalDetail\', \'' + g.id + '\')" style="border-color:' + (g.color ||
+          '#00e5ff') + ';">';
+        html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
+          .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
+          g.target) + '</span></div>';
+        html += '<div class="goal-progress"><div class="goal-fill" style="width:' + progress +
+          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
+        html += '<div class="goal-footer"><span>' + Math.round(progress) +
+          '%</span><span class="goal-status ' + (isCompleted ? 'completed' : '') + '">' + (isCompleted ?
+            '✅ Tercapai' : 'Sisa ' + formatCurrency(g.target - g.saved)) + '</span></div>';
+        html += '</div>';
+      });
+    } else {
+      html += '<div class="empty-state"><div class="empty-icon">🎯</div>' +
+        '<div class="empty-title">Belum ada target tabungan</div>' +
+        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
+        '<button class="neon-btn primary" onclick="App.openGoalModal()">+ Buat Target</button></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="glass">';
+    html += '<div class="section-header"><div class="section-title">📊 Transaksi Terbaru</div>' +
+      '<button class="section-link" onclick="App.navigateToApp(\'transactions\')">Lihat Semua →</button></div>';
+
+    if (recentTxs.length > 0) {
+      recentTxs.forEach(function(t) {
+        var isIncome = t.type === 'income';
+        var isExpense = t.type === 'expense';
+        var isSaving = t.type === 'saving';
+        var icon = getCategoryIcon(t.category);
+        var catName = getCategoryName(t.category);
+        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
+        var sign = isIncome ? '+' : (isExpense ? '-' : '');
+        html += '<div class="transaction-item">';
+        html += '<span class="tx-icon">' + icon + '</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
+          '</div><div class="tx-meta">' + catName + ' · ' + formatDate(t.date) + '</div></div>';
+        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
+          '</div>';
+        html += '</div>';
+      });
+    } else {
+      html += '<div class="empty-state"><div class="empty-icon">📊</div>' +
+        '<div class="empty-title">Belum ada transaksi</div>' +
+        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
+        '<button class="neon-btn primary" onclick="App.openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
+    }
+    html += '</div>';
+
+    appMain.innerHTML = html;
+  }
+
+  // ============================================================
+  // 14. GOAL FUNCTIONS
+  // ============================================================
+
+  function renderGoals() {
+    var data = appData;
+    var goals = data.goals || [];
+
+    var html = '';
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+    html += '<div class="section-title" style="font-size:1.2rem;">🎯 Target Tabungan</div>';
+    html += '<button class="neon-btn primary small" onclick="App.openGoalModal()">+ Buat Target</button>';
+    html += '</div>';
+    html += '</div>';
+
+    if (goals.length === 0) {
+      html += '<div class="glass empty-state"><div class="empty-icon">🎯</div>' +
+        '<div class="empty-title">Belum ada target tabungan</div>' +
+        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
+        '<button class="neon-btn primary" onclick="App.openGoalModal()">+ Buat Target</button></div>';
+    } else {
+      html += '<div class="goals-grid">';
+      goals.forEach(function(g) {
+        var progress = calculateProgress(g);
+        var isCompleted = g.saved >= g.target;
+        html += '<div class="goal-card ' + (isCompleted ? 'completed' : '') +
+          '" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.2)' : (g.color || '#00e5ff') +
+          '44') + ';cursor:pointer;" onclick="App.navigateToApp(\'goalDetail\', \'' + g.id + '\')">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+        html += '<div><div style="font-size:1.8rem;">' + (g.icon || '🎯') +
+          '</div><div class="goal-card-name">' + sanitize(g.name) + '</div></div>';
+        html += '<span style="font-size:0.7rem;color:#88a0b8;">' + (isCompleted ? '✅ Selesai' :
+          '🔄 Aktif') + '</span>';
+        html += '</div>';
+        html += '<div class="goal-card-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(g
+          .target) + '</div>';
+        html += '<div class="goal-card-progress"><div class="goal-fill" style="width:' + progress +
+          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
+        html += '<div class="goal-card-footer">';
+        html += '<span>' + Math.round(progress) + '%</span>';
+        if (g.deadline) {
+          var days = Math.ceil((new Date(g.deadline) - new Date()) / (1000 * 60 * 60 * 24));
+          html += '<span>' + (days > 0 ? days + ' hari lagi' : 'Lewat deadline') + '</span>';
+        } else {
+          html += '<span>Tanpa deadline</span>';
+        }
+        if (!isCompleted) html += '<span>Sisa ' + formatCurrency(g.target - g.saved) + '</span>';
+        html += '</div>';
+        if (g.note) html += '<div style="font-size:0.7rem;color:#88a0b8;margin-top:6px;">📝 ' +
+          sanitize(g.note) + '</div>';
+        html += '<div class="goal-card-actions" onclick="event.stopPropagation();">';
+        html += '<button class="neon-btn primary small" onclick="App.openGoalAddModal(\'' + g.id +
+          '\')">💰 Tambah</button>';
+        html += '<button class="neon-btn small" onclick="App.openGoalModal(\'' + g.id +
+          '\')">✏️ Edit</button>';
+        html += '<button class="neon-btn danger small" onclick="App.deleteGoal(\'' + g.id +
+          '\')">🗑️</button>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    appMain.innerHTML = html;
+  }
+
+  function renderGoalDetail() {
+    var goal = appData.goals.find(function(g) { return g.id === appState.currentGoalId; });
+    if (!goal) {
+      showToast('Target tidak ditemukan', 'error');
+      navigateToApp('goals');
+      return;
+    }
+
+    var progress = calculateProgress(goal);
+    var isCompleted = goal.saved >= goal.target;
+    var remaining = Math.max(0, goal.target - goal.saved);
+    var daysLeft = goal.deadline ? Math.ceil((new Date(goal.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+
+    var html = '';
     
-    // Show rules in onboarding overlay
-    var content = document.getElementById('onboardingContent');
-    if (content) {
-      content.innerHTML = html;
+    html += '<div style="margin-bottom:12px;">';
+    html += '<button class="back-button" onclick="App.goBackApp()">← Kembali</button>';
+    html += '</div>';
+
+    html += '<div class="glass" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.3)' : (goal.color || '#00e5ff') + '44') + ';">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">';
+    html += '<div><div style="font-size:2.5rem;">' + (goal.icon || '🎯') + '</div>';
+    html += '<div style="font-size:1.4rem;font-weight:700;margin:4px 0;">' + sanitize(goal.name) + '</div>';
+    html += '<div style="color:#88a0b8;font-size:1rem;">' + formatCurrency(goal.saved) + ' / ' + formatCurrency(goal.target) + '</div>';
+    html += '</div>';
+    html += '<span class="goal-status ' + (isCompleted ? 'completed' : '') + '" style="font-size:0.85rem;padding:4px 16px;">' + 
+      (isCompleted ? '✅ Selesai' : '🔄 Aktif') + '</span>';
+    html += '</div>';
+
+    html += '<div class="goal-card-progress" style="height:10px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin:12px 0;">';
+    html += '<div class="goal-fill" style="width:' + progress + '%;background:' + (goal.color || '#00e5ff') + ';height:100%;border-radius:4px;transition:width 0.6s ease;"></div>';
+    html += '</div>';
+
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0;">';
+    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+    html += '<div style="font-size:0.7rem;color:#88a0b8;">Progress</div>';
+    html += '<div style="font-size:1.2rem;font-weight:700;color:' + (goal.color || '#00e5ff') + ';">' + Math.round(progress) + '%</div>';
+    html += '</div>';
+    
+    if (!isCompleted) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+      html += '<div style="font-size:0.7rem;color:#88a0b8;">Sisa</div>';
+      html += '<div style="font-size:1.2rem;font-weight:700;color:#ffd93d;">' + formatCurrency(remaining) + '</div>';
+      html += '</div>';
+    }
+    
+    if (goal.deadline) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+      html += '<div style="font-size:0.7rem;color:#88a0b8;">Deadline</div>';
+      html += '<div style="font-size:1.1rem;font-weight:600;color:' + (daysLeft !== null && daysLeft < 0 ? '#ff4d6d' : '#6bcbff') + ';">' + 
+        (daysLeft !== null ? (daysLeft > 0 ? daysLeft + ' hari lagi' : 'Lewat deadline') : 'Tanpa deadline') + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    if (goal.note) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;margin:8px 0;font-size:0.9rem;color:#b0c4de;">';
+      html += '📝 ' + sanitize(goal.note);
+      html += '</div>';
+    }
+
+    html += '<div class="goal-card-actions" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">';
+    html += '<button class="neon-btn primary" onclick="App.openGoalAddModal(\'' + goal.id + '\')" style="flex:1;min-width:100px;">💰 Tambah Tabungan</button>';
+    html += '<button class="neon-btn" onclick="App.openGoalModal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">✏️ Edit</button>';
+    html += '<button class="neon-btn danger" onclick="App.deleteGoal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">🗑️ Hapus</button>';
+    html += '</div>';
+    html += '</div>';
+
+    var relatedTxs = appData.transactions.filter(function(t) { return t.goalId === goal.id; });
+    if (relatedTxs.length > 0) {
+      html += '<div class="glass" style="margin-top:16px;">';
+      html += '<div style="font-weight:600;margin-bottom:12px;">📊 Riwayat Tabungan</div>';
+      relatedTxs.sort(function(a, b) { return new Date(b.date) - new Date(a.date); }).forEach(function(t) {
+        html += '<div class="transaction-item" style="padding:8px 12px;">';
+        html += '<span class="tx-icon">💰</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || 'Tabungan') + '</div>';
+        html += '<div class="tx-meta">' + formatDateTime(t.date) + '</div></div>';
+        html += '<div class="tx-amount saving">+ ' + formatCurrency(t.amount) + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    appMain.innerHTML = html;
+  }
+
+  // ============================================================
+  // 15. TRANSACTIONS RENDER
+  // ============================================================
+
+  function renderTransactions() {
+    var data = appData;
+    var txs = data.transactions || [];
+    var sorted = txs.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    var html = '';
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+    html += '<div class="section-title" style="font-size:1.2rem;">📊 Riwayat Transaksi</div>';
+    html += '<button class="neon-btn primary small" onclick="App.openTransactionModal(\'income\')">+ Tambah</button>';
+    html += '</div>';
+    html += '<div style="margin-top:12px;">';
+    html +=
+      '<input type="text" id="txSearch" placeholder="Cari transaksi..." oninput="App.filterTransactions()" style="width:100%;padding:10px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,229,255,0.15);color:inherit;outline:none;font-family:Rajdhani,sans-serif;font-size:0.9rem;" aria-label="Cari transaksi" />';
+    html += '</div>';
+    html += '</div>';
+
+    if (sorted.length === 0) {
+      html += '<div class="glass empty-state"><div class="empty-icon">📊</div>' +
+        '<div class="empty-title">Belum ada transaksi</div>' +
+        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
+        '<button class="neon-btn primary" onclick="App.openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
+    } else {
+      html += '<div id="txList">';
+      sorted.forEach(function(t) {
+        var isIncome = t.type === 'income';
+        var isExpense = t.type === 'expense';
+        var isSaving = t.type === 'saving';
+        var icon = getCategoryIcon(t.category);
+        var catName = getCategoryName(t.category);
+        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
+        var sign = isIncome ? '+' : (isExpense ? '-' : '');
+        var goalName = t.goalId ? (appData.goals.find(function(g) { return g.id === t.goalId; })?.name || '') :
+        '';
+        html += '<div class="transaction-item" style="padding:12px 16px;">';
+        html += '<span class="tx-icon">' + icon + '</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
+          '</div><div class="tx-meta">' + catName + (goalName ? ' → ' + goalName : '') + ' · ' + formatDateTime(
+          t.date) + '</div></div>';
+        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
+          '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    appMain.innerHTML = html;
+  }
+
+  function filterTransactions() {
+    var query = document.getElementById('txSearch')?.value?.toLowerCase() || '';
+    var items = document.querySelectorAll('#txList .transaction-item');
+    items.forEach(function(item) {
+      var text = item.textContent.toLowerCase();
+      item.style.display = text.includes(query) ? 'flex' : 'none';
+    });
+  }
+
+  // ============================================================
+  // 16. ANALYTICS RENDER
+  // ============================================================
+
+  function renderAnalytics() {
+    var data = appData;
+    var txs = data.transactions || [];
+    var goals = data.goals || [];
+
+    var totalInc = getTotalIncome(txs);
+    var totalExp = getTotalExpense(txs);
+    var totalSav = getTotalSaving(txs);
+    var totalGoalSavings = getTotalGoalSavings(goals);
+    var balance = getTotalBalance(txs);
+    var dailyAvg = getDailyAverage(txs, 30);
+    var monthlyAvg = dailyAvg * 30;
+    var insights = generateInsights(txs, goals);
+
+    var periodOptions = [
+      { label: '7 Hari', days: 7 },
+      { label: '30 Hari', days: 30 },
+      { label: '3 Bulan', days: 90 },
+      { label: '1 Tahun', days: 365 }
+    ];
+
+    var historyData = getBalanceHistory(txs, chartPeriod);
+    var hasData = historyData.length > 0 && historyData.some(function(d) { return d.balance !== 0; });
+
+    var html = '';
+    html += '<div class="page-container active">';
+    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Perkembangan Saldo</div>';
+
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
+    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(balance) +
+      '</div><div class="insight-label">Saldo Saat Ini</div></div>';
+    
+    if (historyData.length >= 2) {
+      var firstBalance = historyData[0]?.balance || 0;
+      var lastBalance = historyData[historyData.length - 1]?.balance || 0;
+      var change = firstBalance > 0 ? ((lastBalance - firstBalance) / firstBalance) * 100 : 0;
+      html += '<div class="insight-card glass"><div class="insight-value" style="color:' + (change >= 0 ? '#00ff88' : '#ff4d6d') + ';">' +
+        (change >= 0 ? '↑' : '↓') + ' ' + Math.abs(change).toFixed(1) + '%</div><div class="insight-label">Perubahan</div></div>';
+    } else {
+      html += '<div class="insight-card glass"><div class="insight-value" style="color:#88a0b8;">-</div><div class="insight-label">Perubahan</div></div>';
+    }
+    
+    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(monthlyAvg) +
+      '</div><div class="insight-label">Rata-rata / Bulan</div></div>';
+    html += '<div class="insight-card glass"><div class="insight-value">' + txs.length +
+      '</div><div class="insight-label">Total Transaksi</div></div>';
+    html += '</div>';
+
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html +=
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
+    html += '<span style="font-weight:600;">📊 Grafik Saldo</span>';
+    html += '<div class="period-filters">';
+    periodOptions.forEach(function(p) {
+      html += '<button class="period-btn ' + (p.days === chartPeriod ? 'active' : '') +
+        '" onclick="App.setChartPeriod(' + p.days + ')">' + p.label + '</button>';
+    });
+    html += '</div></div>';
+
+    if (!hasData) {
+      html += '<div class="empty-state" style="padding:30px 16px;">';
+      html += '<div class="empty-icon">📈</div>';
+      html += '<div class="empty-title">Belum ada data perkembangan saldo</div>';
+      html += '<div class="empty-desc">Mulai mencatat pemasukan, pengeluaran, atau tabungan untuk melihat perkembangan saldo kamu.</div>';
+      html += '<button class="neon-btn primary" onclick="App.openTransactionModal(\'income\')">+ Tambah Transaksi</button>';
+      html += '</div>';
+    } else {
+      html += '<div class="analytics-chart" style="position:relative;">';
+      html += '<canvas id="balanceChart"></canvas>';
+      html += '<div id="chartTooltip" class="chart-tooltip" style="display:none;"></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    if (hasData) {
+      html += '<div class="glass">';
+      html += '<div style="font-weight:600;margin-bottom:8px;">💡 Insight Keuangan</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      insights.forEach(function(i) {
+        html += '<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:12px;border-left:3px solid ' +
+          (i.type === 'warning' ? '#ff4d6d' : i.type === 'positive' ? '#00ff88' : '#00e5ff') + ';">';
+        html += '<span style="font-size:0.85rem;">' + i.message + '</span></div>';
+      });
+      html += '</div></div>';
+    }
+
+    html += '</div>';
+
+    appMain.innerHTML = html;
+
+    if (hasData) {
+      setTimeout(function() {
+        drawBalanceChart('balanceChart', historyData);
+      }, 100);
+    }
+  }
+
+  function setChartPeriod(days) {
+    chartPeriod = days;
+    renderAnalytics();
+  }
+
+  // ============================================================
+  // 17. CHART FUNCTIONS
+  // ============================================================
+
+  function drawBalanceChart(canvasId, data) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    var rect = canvas.parentElement?.getBoundingClientRect();
+    var W = rect?.width || canvas.clientWidth || 400;
+    var H = rect?.height || 220;
+
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    var pad = { top: 30, right: 20, bottom: 30, left: 20 };
+    var chartW = W - pad.left - pad.right;
+    var chartH = H - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!data || data.length === 0) return;
+
+    var values = data.map(function(d) { return d.balance; });
+    var labels = data.map(function(d) { return d.label; });
+    var maxVal = Math.max(1, Math.max.apply(null, values.map(Math.abs)));
+    var minVal = Math.min(0, Math.min.apply(null, values));
+    var range = maxVal - minVal || 1;
+
+    var isDark = !document.body.classList.contains('light-mode');
+    var colors = {
+      line: isDark ? '#00e5ff' : '#7c4dff',
+      fill: isDark ? 'rgba(0,229,255,0.05)' : 'rgba(124,77,255,0.05)',
+      grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+      text: isDark ? '#88a0b8' : '#6a6a8e',
+      point: isDark ? '#00e5ff' : '#7c4dff',
+      pointHover: isDark ? '#ffffff' : '#1a1a2e'
+    };
+
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 0.5;
+    for (var g = 0; g <= 4; g++) {
+      var y = pad.top + (chartH / 4) * g;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(W - pad.right, y);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.strokeStyle = colors.line;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = colors.line + '66';
+    ctx.shadowBlur = 12;
+
+    var points = [];
+    for (var i = 0; i < values.length; i++) {
+      var x = pad.left + (i / (values.length - 1 || 1)) * chartW;
+      var y = pad.top + chartH - ((values[i] - minVal) / range) * chartH;
+      points.push({ x: x, y: y, index: i });
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.beginPath();
+    var firstX = pad.left;
+    var firstY = pad.top + chartH - ((values[0] - minVal) / range) * chartH;
+    ctx.moveTo(firstX, pad.top + chartH);
+    ctx.lineTo(firstX, firstY);
+    for (var a = 0; a < values.length; a++) {
+      var ax = pad.left + (a / (values.length - 1 || 1)) * chartW;
+      var ay = pad.top + chartH - ((values[a] - minVal) / range) * chartH;
+      ctx.lineTo(ax, ay);
+    }
+    var lastX = pad.left + chartW;
+    ctx.lineTo(lastX, pad.top + chartH);
+    ctx.closePath();
+    ctx.fillStyle = colors.fill;
+    ctx.fill();
+
+    var tooltipData = [];
+    for (var p = 0; p < values.length; p++) {
+      var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
+      var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
+
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = colors.point;
+      ctx.shadowColor = colors.point + '88';
+      ctx.shadowBlur = 15;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if (values.length <= 10) {
+        ctx.fillStyle = colors.text;
+        ctx.font = '8px Rajdhani';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[p], px, H - 4);
+      }
+
+      tooltipData.push({
+        x: px, y: py, index: p,
+        date: data[p].date,
+        balance: data[p].balance,
+        income: data[p].income || 0,
+        expense: data[p].expense || 0,
+        label: labels[p]
+      });
+    }
+
+    var tooltip = document.getElementById('chartTooltip');
+    if (tooltip) {
+      canvas.onmousemove = function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var mouseX = e.clientX - rect.left;
+        var mouseY = e.clientY - rect.top;
+
+        for (var t = 0; t < tooltipData.length; t++) {
+          var pt = tooltipData[t];
+          var dist = Math.sqrt(Math.pow(mouseX - pt.x, 2) + Math.pow(mouseY - pt.y, 2));
+          if (dist < 20) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (pt.x + 10) + 'px';
+            tooltip.style.top = (pt.y - 40) + 'px';
+            tooltip.innerHTML = 
+              '<div class="tooltip-date">' + formatDate(pt.date) + '</div>' +
+              '<div class="tooltip-amount">' + formatCurrency(pt.balance) + '</div>' +
+              (pt.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt.income) + '</div>' : '') +
+              (pt.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt.expense) + '</div>' : '');
+            return;
+          }
+        }
+        tooltip.style.display = 'none';
+      };
+
+      canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
     }
   }
 
   // ============================================================
-  // 10. MODAL FUNCTIONS
+  // 18. SETTINGS RENDER
   // ============================================================
 
-  function closeModal(id) {
-    var el = document.getElementById(id);
-    if (el && el.parentNode) {
-      el.remove();
+  function renderSettings() {
+    var settings = appData.settings || {};
+
+    var hasNotificationSupport = 'Notification' in window;
+    var permission = hasNotificationSupport ? Notification.permission : 'denied';
+    var isPermissionGranted = permission === 'granted';
+    var isPermissionDenied = permission === 'denied';
+
+    var notificationState = localStorage.getItem(NOTIFICATION_KEY);
+    var isNotificationOn = notificationState === 'enabled' && isPermissionGranted;
+
+    var html = '';
+    html += '<div class="page-container active">';
+    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">⚙️ Pengaturan</div>';
+
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tampilan</h4>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    html += '<button class="neon-btn small ' + (settings.theme === 'dark' ? 'active' : '') +
+      '" onclick="App.setTheme(\'dark\')">🌙 Dark</button>';
+    html += '<button class="neon-btn small ' + (settings.theme === 'light' ? 'active' : '') +
+      '" onclick="App.setTheme(\'light\')">☀️ Light</button>';
+    html += '<button class="neon-btn small ' + (settings.theme === 'system' ? 'active' : '') +
+      '" onclick="App.setTheme(\'system\')">🖥️ System</button>';
+    html += '</div></div>';
+
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🔔 Pengingat Menabung</h4>';
+    
+    if (isPermissionDenied) {
+      html += '<div class="notification-permission-denied">';
+      html += '<span class="denied-icon">❌</span>';
+      html += '<span>Notifikasi diblokir oleh browser. Silakan aktifkan izin notifikasi di pengaturan browser.</span>';
+      html += '</div>';
+    } else {
+      html += '<div class="notification-toggle-wrapper">';
+      html += '<div class="notification-toggle-info">';
+      html += '<div class="toggle-label">';
+      html += isNotificationOn ? '✓' : '🔔';
+      html += ' <span>' + (isNotificationOn ? 'Pengingat Menabung Aktif' : 'Aktifkan Pengingat Menabung') + '</span>';
+      html += '</div>';
+      html += '<div class="toggle-desc">' + 
+        (isNotificationOn ? 'Kamu akan mendapatkan pengingat untuk tetap konsisten menabung.' : 
+        'Dapatkan pengingat untuk tetap konsisten menabung.') +
+      '</div>';
+      html += '</div>';
+      
+      html += '<div class="notification-toggle-status">';
+      html += '<div class="toggle-switch-modern' + (isNotificationOn ? ' is-active' : '') + 
+        '" onclick="App.toggleNotification()" role="button" aria-pressed="' + (isNotificationOn ? 'true' : 'false') + 
+        '" aria-label="' + (isNotificationOn ? 'Nonaktifkan' : 'Aktifkan') + ' Pengingat Menabung" tabindex="0">';
+      html += '<div class="toggle-track"></div>';
+      html += '<div class="toggle-thumb"></div>';
+      html += '</div>';
+      html += '<span class="toggle-status-text ' + (isNotificationOn ? 'on' : 'off') + '">' + 
+        (isNotificationOn ? 'ON' : 'OFF') + '</span>';
+      html += '</div>';
+      html += '</div>';
+      
+      if (hasNotificationSupport && permission === 'default') {
+        html += '<div style="margin-top:8px;font-size:0.7rem;color:#88a0b8;">';
+        html += '💡 Klik toggle untuk meminta izin notifikasi browser.';
+        html += '</div>';
+      }
     }
+    html += '</div>';
+
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Data</h4>';
+    html +=
+      '<div style="display:flex;flex-direction:column;gap:8px;">';
+    html +=
+      '<button class="neon-btn small" onclick="App.downloadBackup()" style="width:100%;text-align:center;">📥 Download Backup</button>';
+    html +=
+      '<button class="neon-btn small" onclick="document.getElementById(\'restoreInput\').click()" style="width:100%;text-align:center;">📤 Restore Backup</button>';
+    html +=
+      '<input type="file" id="restoreInput" accept=".json" style="display:none" onchange="App.restoreBackup(this)" />';
+    html +=
+      '<button class="neon-btn danger small" onclick="App.openResetModal()" style="width:100%;text-align:center;">🗑️ Reset Semua Data</button>';
+    html += '</div></div>';
+
+    html += '<div class="data-warning" style="margin-bottom:12px;">';
+    html += '<span class="warning-icon">🔒</span>';
+    html +=
+      '<span>Data tersimpan secara lokal di perangkat ini. <strong>Download backup</strong> secara rutin untuk menghindari kehilangan data.</span>';
+    html += '</div>';
+
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.2</p>';
+    html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
+    html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
+    html +=
+      '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>';
+    html += '</div>';
+
+    html += '<div class="jhon-forum-card">';
+    html += '<div class="jhon-forum-title">JHON FORUM ACCESS</div>';
+    html += '<div class="jhon-forum-divider"></div>';
+    html +=
+      '<p class="jhon-forum-desc">Bergabunglah dengan saluran komunikasi kami untuk pembaruan sistem & pelaporan bug.</p>';
+    html +=
+      '<a href="https://whatsapp.com/channel/0029VaLiUSS5q08hPj5mcH0m" target="_blank" rel="noopener noreferrer" class="jhon-forum-btn">Join Saluran</a>';
+    html += '</div>';
+
+    appMain.innerHTML = html;
   }
+
+  // ============================================================
+  // 19. MODAL FUNCTIONS
+  // ============================================================
 
   function openTransactionModal(type) {
     type = type || 'income';
@@ -778,7 +1539,7 @@
     modal.id = 'transactionModal';
     modal.innerHTML =
       '<div class="popup-glass">' +
-      '<button class="modal-close" onclick="closeModal(\'transactionModal\')">✕</button>' +
+      '<button class="modal-close" onclick="App.closeModal(\'transactionModal\')">✕</button>' +
       '<div class="popup-title">' + (titles[type] || titles.income) + '</div>' +
       '<select id="modalType" style="display:none;"><option value="' + type + '">' + type + '</option></select>' +
       '<input type="number" id="modalAmount" placeholder="Nominal" min="1" step="1" aria-label="Nominal" />' +
@@ -802,8 +1563,8 @@
       '<input type="text" id="modalDesc" placeholder="Catatan (opsional)" maxlength="100" aria-label="Catatan" />' +
       '<div style="color:#88a0b8;margin-bottom:12px;font-size:0.85rem;">📅 ' + formatDateTime(
         getCurrentDateTime()) + '</div>' +
-      '<button class="neon-btn full" onclick="confirmTransaction()">Simpan Transaksi</button>' +
-      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'transactionModal\')">Batal</button>' +
+      '<button class="neon-btn full" onclick="App.confirmTransaction()">Simpan Transaksi</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="App.closeModal(\'transactionModal\')">Batal</button>' +
       '</div>';
 
     document.body.appendChild(modal);
@@ -849,10 +1610,10 @@
     showToast(
       (type === 'income' ? '➕' : type === 'expense' ? '➖' : '💰') + ' Transaksi berhasil: ' + formatCurrency(amount),
       'success',
-      function() { undoTransaction(); }
+      function() { App.undoTransaction(); }
     );
 
-    renderCurrentPage();
+    renderAppView(appState.currentView);
   }
 
   function undoTransaction() {
@@ -869,12 +1630,17 @@
       saveData(appData);
       transactionToUndo = null;
       showToast('Transaksi dibatalkan', 'warning');
-      renderCurrentPage();
+      renderAppView(appState.currentView);
     }
   }
 
+  function closeModal(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode) el.remove();
+  }
+
   // ============================================================
-  // 11. GOAL FUNCTIONS
+  // 20. GOAL MODAL FUNCTIONS
   // ============================================================
 
   function openGoalModal(goalId) {
@@ -886,7 +1652,7 @@
     modal.id = 'goalModal';
     modal.innerHTML =
       '<div class="popup-glass">' +
-      '<button class="modal-close" onclick="closeModal(\'goalModal\')">✕</button>' +
+      '<button class="modal-close" onclick="App.closeModal(\'goalModal\')">✕</button>' +
       '<div class="popup-title">' + (isEdit ? '✏️ Edit Target' : '🎯 Target Baru') + '</div>' +
       '<input type="text" id="goalName" placeholder="Nama Target" value="' + (goal ? sanitize(goal.name) : '') +
       '" maxlength="50" aria-label="Nama Target" />' +
@@ -901,13 +1667,13 @@
       '<div class="color-options">' +
       ['#00e5ff', '#7c4dff', '#00ff88', '#ff6b6b', '#ffd93d', '#6bcbff', '#ff8a5c', '#a8e6cf'].map(function(c) {
         return '<button class="color-opt' + (goal && goal.color === c ? ' active' : '') +
-          '" data-color="' + c + '" style="background:' + c + ';" onclick="selectColor(this)"></button>';
+          '" data-color="' + c + '" style="background:' + c + ';" onclick="App.selectColor(this)"></button>';
       }).join('') +
       '</div>' +
       '</div>' +
-      '<button class="neon-btn full" onclick="confirmGoal(\'' + (goalId || '') + '\')">' + (isEdit ?
+      '<button class="neon-btn full" onclick="App.confirmGoal(\'' + (goalId || '') + '\')">' + (isEdit ?
         'Update Target' : 'Simpan Target') + '</button>' +
-      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'goalModal\')">Batal</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="App.closeModal(\'goalModal\')">Batal</button>' +
       '</div>';
 
     document.body.appendChild(modal);
@@ -973,9 +1739,10 @@
     closeModal('goalModal');
 
     if (goal) {
-      navigateTo('goalDetail', goal.id);
+      appState.currentGoalId = goal.id;
+      navigateToApp('goalDetail');
     } else {
-      navigateTo('goals');
+      navigateToApp('goals');
     }
   }
 
@@ -984,11 +1751,11 @@
     appData.goals = appData.goals.filter(function(g) { return g.id !== goalId; });
     saveData(appData);
     showToast('🗑️ Target dihapus', 'warning');
-    if (currentGoalId === goalId) {
-      currentGoalId = null;
-      navigateTo('goals');
+    if (appState.currentGoalId === goalId) {
+      appState.currentGoalId = null;
+      navigateToApp('goals');
     } else {
-      renderCurrentPage();
+      renderAppView(appState.currentView);
     }
   }
 
@@ -1001,14 +1768,14 @@
     modal.id = 'goalAddModal';
     modal.innerHTML =
       '<div class="popup-glass">' +
-      '<button class="modal-close" onclick="closeModal(\'goalAddModal\')">✕</button>' +
+      '<button class="modal-close" onclick="App.closeModal(\'goalAddModal\')">✕</button>' +
       '<div class="popup-title">💰 Tambah Tabungan</div>' +
       '<p style="color:#b0c4de;margin-bottom:12px;font-weight:600;">Target: ' + (goal.icon || '🎯') + ' ' +
       sanitize(goal.name) + '</p>' +
       '<input type="number" id="goalAddAmount" placeholder="Nominal tambahan" min="1" step="1" aria-label="Nominal" />' +
       '<input type="text" id="goalAddNote" placeholder="Catatan (opsional)" maxlength="100" aria-label="Catatan" />' +
-      '<button class="neon-btn full" onclick="confirmGoalAdd(\'' + goalId + '\')">Tambahkan</button>' +
-      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'goalAddModal\')">Batal</button>' +
+      '<button class="neon-btn full" onclick="App.confirmGoalAdd(\'' + goalId + '\')">Tambahkan</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="App.closeModal(\'goalAddModal\')">Batal</button>' +
       '</div>';
 
     document.body.appendChild(modal);
@@ -1049,795 +1816,11 @@
     saveData(appData);
     closeModal('goalAddModal');
     showToast('💰 ' + formatCurrency(amount) + ' ditambahkan ke ' + goal.name, 'success');
-    renderCurrentPage();
+    renderAppView(appState.currentView);
   }
 
   // ============================================================
-  // 12. RENDER FUNCTIONS
-  // ============================================================
-
-  function renderBackButton() {
-    return '<button class="back-button" onclick="window.goBack && window.goBack()">← Kembali</button>';
-  }
-
-  function renderDashboard() {
-    var data = appData;
-    var txs = data.transactions || [];
-    var goals = data.goals || [];
-    var totalInc = getTotalIncome(txs);
-    var totalExp = getTotalExpense(txs);
-    var totalSav = getTotalSaving(txs);
-    var balance = getTotalBalance(txs);
-    var goalSavings = getTotalGoalSavings(goals);
-    var recentTxs = txs.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
-    }).slice(0, 5);
-    var activeGoals = getActiveGoals(goals).slice(0, 3);
-
-    var html = '';
-
-    html += '<div class="balance-card">';
-    html += '<div class="balance-label">TOTAL SALDO</div>';
-    html += '<div class="balance-amount">' + formatCurrency(balance) + '</div>';
-    html += '<div class="balance-stats">';
-    html += '<div class="balance-stat"><div class="stat-label">Pemasukan</div><div class="stat-value income">' +
-      formatCurrency(totalInc) + '</div></div>';
-    html += '<div class="balance-stat"><div class="stat-label">Pengeluaran</div><div class="stat-value expense">' +
-      formatCurrency(totalExp) + '</div></div>';
-    html += '<div class="balance-stat"><div class="stat-label">Tabungan</div><div class="stat-value savings">' +
-      formatCurrency(totalSav + goalSavings) + '</div></div>';
-    html += '</div>';
-    html += '<div class="balance-actions">';
-    html += '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Uang</button>';
-    html += '<button class="neon-btn danger" onclick="openTransactionModal(\'expense\')">− Ambil Uang</button>';
-    html += '<button class="neon-btn" onclick="openTransactionModal(\'saving\')">💰 Menabung</button>';
-    html += '</div>';
-    html += '</div>';
-
-    html += '<div class="quick-stats">';
-    html += '<div class="quick-stat glass"><div class="stat-number">' + txs.length +
-      '</div><div class="stat-label">Transaksi</div></div>';
-    html += '<div class="quick-stat glass"><div class="stat-number">' + goals.length +
-      '</div><div class="stat-label">Target</div></div>';
-    html += '<div class="quick-stat glass"><div class="stat-number">' + getCompletedGoals(goals).length +
-      '</div><div class="stat-label">Tercapai</div></div>';
-    html += '<div class="quick-stat glass"><div class="stat-number">' + getActiveGoals(goals).length +
-      '</div><div class="stat-label">Aktif</div></div>';
-    html += '</div>';
-
-    html += '<div class="data-warning">';
-    html += '<span class="warning-icon">🔒</span>';
-    html +=
-      '<span>Data tersimpan secara lokal di perangkat ini. Jika browser atau data situs dihapus, data tabungan dapat ikut terhapus. <strong>Download backup</strong> secara rutin.</span>';
-    html += '</div>';
-
-    html += '<div class="glass">';
-    html += '<div class="section-header"><div class="section-title">🎯 Target Tabungan</div>' +
-      '<button class="section-link" onclick="navigateTo(\'goals\')">Lihat Semua →</button></div>';
-
-    if (activeGoals.length > 0) {
-      activeGoals.forEach(function(g) {
-        var progress = calculateProgress(g);
-        var isCompleted = g.saved >= g.target;
-        html += '<div class="goal-item" onclick="navigateTo(\'goalDetail\', \'' + g.id + '\')" style="border-color:' + (g.color ||
-          '#00e5ff') + ';">';
-        html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
-          .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
-          g.target) + '</span></div>';
-        html += '<div class="goal-progress"><div class="goal-fill" style="width:' + progress +
-          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
-        html += '<div class="goal-footer"><span>' + Math.round(progress) +
-          '%</span><span class="goal-status ' + (isCompleted ? 'completed' : '') + '">' + (isCompleted ?
-            '✅ Tercapai' : 'Sisa ' + formatCurrency(g.target - g.saved)) + '</span></div>';
-        html += '</div>';
-      });
-    } else {
-      html += '<div class="empty-state"><div class="empty-icon">🎯</div>' +
-        '<div class="empty-title">Belum ada target tabungan</div>' +
-        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
-        '<button class="neon-btn primary" onclick="openGoalModal()">+ Buat Target</button></div>';
-    }
-    html += '</div>';
-
-    html += '<div class="glass">';
-    html += '<div class="section-header"><div class="section-title">📊 Transaksi Terbaru</div>' +
-      '<button class="section-link" onclick="navigateTo(\'transactions\')">Lihat Semua →</button></div>';
-
-    if (recentTxs.length > 0) {
-      recentTxs.forEach(function(t) {
-        var isIncome = t.type === 'income';
-        var isExpense = t.type === 'expense';
-        var isSaving = t.type === 'saving';
-        var icon = getCategoryIcon(t.category);
-        var catName = getCategoryName(t.category);
-        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
-        var sign = isIncome ? '+' : (isExpense ? '-' : '');
-        html += '<div class="transaction-item">';
-        html += '<span class="tx-icon">' + icon + '</span>';
-        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
-          '</div><div class="tx-meta">' + catName + ' · ' + formatDate(t.date) + '</div></div>';
-        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
-          '</div>';
-        html += '</div>';
-      });
-    } else {
-      html += '<div class="empty-state"><div class="empty-icon">📊</div>' +
-        '<div class="empty-title">Belum ada transaksi</div>' +
-        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
-        '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
-    }
-    html += '</div>';
-
-    mainContent.innerHTML = html;
-  }
-
-  function renderGoalDetail() {
-    var goal = appData.goals.find(function(g) { return g.id === currentGoalId; });
-    if (!goal) {
-      showToast('Target tidak ditemukan', 'error');
-      navigateTo('goals');
-      return;
-    }
-
-    var progress = calculateProgress(goal);
-    var isCompleted = goal.saved >= goal.target;
-    var remaining = Math.max(0, goal.target - goal.saved);
-    var daysLeft = goal.deadline ? Math.ceil((new Date(goal.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
-
-    var html = '';
-    
-    html += '<div style="margin-bottom:12px;">';
-    html += renderBackButton();
-    html += '</div>';
-
-    html += '<div class="glass" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.3)' : (goal.color || '#00e5ff') + '44') + ';">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">';
-    html += '<div><div style="font-size:2.5rem;">' + (goal.icon || '🎯') + '</div>';
-    html += '<div style="font-size:1.4rem;font-weight:700;margin:4px 0;">' + sanitize(goal.name) + '</div>';
-    html += '<div style="color:#88a0b8;font-size:1rem;">' + formatCurrency(goal.saved) + ' / ' + formatCurrency(goal.target) + '</div>';
-    html += '</div>';
-    html += '<span class="goal-status ' + (isCompleted ? 'completed' : '') + '" style="font-size:0.85rem;padding:4px 16px;">' + 
-      (isCompleted ? '✅ Selesai' : '🔄 Aktif') + '</span>';
-    html += '</div>';
-
-    html += '<div class="goal-card-progress" style="height:10px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin:12px 0;">';
-    html += '<div class="goal-fill" style="width:' + progress + '%;background:' + (goal.color || '#00e5ff') + ';height:100%;border-radius:4px;transition:width 0.6s ease;"></div>';
-    html += '</div>';
-
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0;">';
-    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
-    html += '<div style="font-size:0.7rem;color:#88a0b8;">Progress</div>';
-    html += '<div style="font-size:1.2rem;font-weight:700;color:' + (goal.color || '#00e5ff') + ';">' + Math.round(progress) + '%</div>';
-    html += '</div>';
-    
-    if (!isCompleted) {
-      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
-      html += '<div style="font-size:0.7rem;color:#88a0b8;">Sisa</div>';
-      html += '<div style="font-size:1.2rem;font-weight:700;color:#ffd93d;">' + formatCurrency(remaining) + '</div>';
-      html += '</div>';
-    }
-    
-    if (goal.deadline) {
-      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
-      html += '<div style="font-size:0.7rem;color:#88a0b8;">Deadline</div>';
-      html += '<div style="font-size:1.1rem;font-weight:600;color:' + (daysLeft !== null && daysLeft < 0 ? '#ff4d6d' : '#6bcbff') + ';">' + 
-        (daysLeft !== null ? (daysLeft > 0 ? daysLeft + ' hari lagi' : 'Lewat deadline') : 'Tanpa deadline') + '</div>';
-      html += '</div>';
-    }
-    html += '</div>';
-
-    if (goal.note) {
-      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;margin:8px 0;font-size:0.9rem;color:#b0c4de;">';
-      html += '📝 ' + sanitize(goal.note);
-      html += '</div>';
-    }
-
-    html += '<div class="goal-card-actions" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">';
-    html += '<button class="neon-btn primary" onclick="openGoalAddModal(\'' + goal.id + '\')" style="flex:1;min-width:100px;">💰 Tambah Tabungan</button>';
-    html += '<button class="neon-btn" onclick="openGoalModal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">✏️ Edit</button>';
-    html += '<button class="neon-btn danger" onclick="deleteGoal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">🗑️ Hapus</button>';
-    html += '</div>';
-    html += '</div>';
-
-    var relatedTxs = appData.transactions.filter(function(t) { return t.goalId === goal.id; });
-    if (relatedTxs.length > 0) {
-      html += '<div class="glass" style="margin-top:16px;">';
-      html += '<div style="font-weight:600;margin-bottom:12px;">📊 Riwayat Tabungan</div>';
-      relatedTxs.sort(function(a, b) { return new Date(b.date) - new Date(a.date); }).forEach(function(t) {
-        html += '<div class="transaction-item" style="padding:8px 12px;">';
-        html += '<span class="tx-icon">💰</span>';
-        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || 'Tabungan') + '</div>';
-        html += '<div class="tx-meta">' + formatDateTime(t.date) + '</div></div>';
-        html += '<div class="tx-amount saving">+ ' + formatCurrency(t.amount) + '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    mainContent.innerHTML = html;
-  }
-
-  function renderGoals() {
-    currentPage = 'goals';
-    var data = appData;
-    var goals = data.goals || [];
-
-    var html = '';
-    html += '<div class="glass" style="margin-bottom:16px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
-    html += '<div class="section-title" style="font-size:1.2rem;">🎯 Target Tabungan</div>';
-    html += '<button class="neon-btn primary small" onclick="openGoalModal()">+ Buat Target</button>';
-    html += '</div>';
-    html += '</div>';
-
-    if (goals.length === 0) {
-      html += '<div class="glass empty-state"><div class="empty-icon">🎯</div>' +
-        '<div class="empty-title">Belum ada target tabungan</div>' +
-        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
-        '<button class="neon-btn primary" onclick="openGoalModal()">+ Buat Target</button></div>';
-    } else {
-      html += '<div class="goals-grid">';
-      goals.forEach(function(g) {
-        var progress = calculateProgress(g);
-        var isCompleted = g.saved >= g.target;
-        var remaining = Math.max(0, g.target - g.saved);
-        html += '<div class="goal-card ' + (isCompleted ? 'completed' : '') +
-          '" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.2)' : (g.color || '#00e5ff') +
-          '44') + ';cursor:pointer;" onclick="navigateTo(\'goalDetail\', \'' + g.id + '\')">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-        html += '<div><div style="font-size:1.8rem;">' + (g.icon || '🎯') +
-          '</div><div class="goal-card-name">' + sanitize(g.name) + '</div></div>';
-        html += '<span style="font-size:0.7rem;color:#88a0b8;">' + (isCompleted ? '✅ Selesai' :
-          '🔄 Aktif') + '</span>';
-        html += '</div>';
-        html += '<div class="goal-card-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(g
-          .target) + '</div>';
-        html += '<div class="goal-card-progress"><div class="goal-fill" style="width:' + progress +
-          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
-        html += '<div class="goal-card-footer">';
-        html += '<span>' + Math.round(progress) + '%</span>';
-        if (g.deadline) {
-          var days = Math.ceil((new Date(g.deadline) - new Date()) / (1000 * 60 * 60 * 24));
-          html += '<span>' + (days > 0 ? days + ' hari lagi' : 'Lewat deadline') + '</span>';
-        } else {
-          html += '<span>Tanpa deadline</span>';
-        }
-        if (!isCompleted) html += '<span>Sisa ' + formatCurrency(remaining) + '</span>';
-        html += '</div>';
-        if (g.note) html += '<div style="font-size:0.7rem;color:#88a0b8;margin-top:6px;">📝 ' +
-          sanitize(g.note) + '</div>';
-        html += '<div class="goal-card-actions" onclick="event.stopPropagation();">';
-        html += '<button class="neon-btn primary small" onclick="openGoalAddModal(\'' + g.id +
-          '\')">💰 Tambah</button>';
-        html += '<button class="neon-btn small" onclick="openGoalModal(\'' + g.id +
-          '\')">✏️ Edit</button>';
-        html += '<button class="neon-btn danger small" onclick="deleteGoal(\'' + g.id +
-          '\')">🗑️</button>';
-        html += '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    mainContent.innerHTML = html;
-  }
-
-  function renderTransactions() {
-    currentPage = 'transactions';
-    var data = appData;
-    var txs = data.transactions || [];
-    var sorted = txs.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
-    });
-
-    var html = '';
-    html += '<div class="glass" style="margin-bottom:16px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
-    html += '<div class="section-title" style="font-size:1.2rem;">📊 Riwayat Transaksi</div>';
-    html += '<button class="neon-btn primary small" onclick="openTransactionModal(\'income\')">+ Tambah</button>';
-    html += '</div>';
-    html += '<div style="margin-top:12px;">';
-    html +=
-      '<input type="text" id="txSearch" placeholder="Cari transaksi..." oninput="filterTransactions()" style="width:100%;padding:10px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,229,255,0.15);color:inherit;outline:none;font-family:Rajdhani,sans-serif;font-size:0.9rem;" aria-label="Cari transaksi" />';
-    html += '</div>';
-    html += '</div>';
-
-    if (sorted.length === 0) {
-      html += '<div class="glass empty-state"><div class="empty-icon">📊</div>' +
-        '<div class="empty-title">Belum ada transaksi</div>' +
-        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
-        '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
-    } else {
-      html += '<div id="txList">';
-      sorted.forEach(function(t) {
-        var isIncome = t.type === 'income';
-        var isExpense = t.type === 'expense';
-        var isSaving = t.type === 'saving';
-        var icon = getCategoryIcon(t.category);
-        var catName = getCategoryName(t.category);
-        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
-        var sign = isIncome ? '+' : (isExpense ? '-' : '');
-        var goalName = t.goalId ? (appData.goals.find(function(g) { return g.id === t.goalId; })?.name || '') :
-        '';
-        html += '<div class="transaction-item" style="padding:12px 16px;">';
-        html += '<span class="tx-icon">' + icon + '</span>';
-        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
-          '</div><div class="tx-meta">' + catName + (goalName ? ' → ' + goalName : '') + ' · ' + formatDateTime(
-          t.date) + '</div></div>';
-        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
-          '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    mainContent.innerHTML = html;
-  }
-
-  function filterTransactions() {
-    var query = document.getElementById('txSearch')?.value?.toLowerCase() || '';
-    var items = document.querySelectorAll('#txList .transaction-item');
-    items.forEach(function(item) {
-      var text = item.textContent.toLowerCase();
-      item.style.display = text.includes(query) ? 'flex' : 'none';
-    });
-  }
-
-  // ============================================================
-  // 13. ANALYTICS FUNCTIONS (FIXED - Chart dengan data real)
-  // ============================================================
-
-  function renderAnalytics() {
-    currentPage = 'analytics';
-    var data = appData;
-    var txs = data.transactions || [];
-    var goals = data.goals || [];
-
-    var totalInc = getTotalIncome(txs);
-    var totalExp = getTotalExpense(txs);
-    var totalSav = getTotalSaving(txs);
-    var totalGoalSavings = getTotalGoalSavings(goals);
-    var balance = getTotalBalance(txs);
-    var dailyAvg = getDailyAverage(txs, 30);
-    var monthlyAvg = dailyAvg * 30;
-    var insights = generateInsights(txs, goals);
-
-    var periodOptions = [
-      { label: '7 Hari', days: 7 },
-      { label: '30 Hari', days: 30 },
-      { label: '3 Bulan', days: 90 },
-      { label: '1 Tahun', days: 365 }
-    ];
-
-    // Get balance history for chart
-    var historyData = getBalanceHistory(txs, chartPeriod);
-    var hasData = historyData.length > 0 && historyData.some(function(d) { return d.balance !== 0; });
-
-    var html = '';
-    html += '<div class="page-container active">';
-    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Perkembangan Saldo</div>';
-
-    // Stats
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
-    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(balance) +
-      '</div><div class="insight-label">Saldo Saat Ini</div></div>';
-    
-    // Calculate change
-    if (historyData.length >= 2) {
-      var firstBalance = historyData[0]?.balance || 0;
-      var lastBalance = historyData[historyData.length - 1]?.balance || 0;
-      var change = firstBalance > 0 ? ((lastBalance - firstBalance) / firstBalance) * 100 : 0;
-      html += '<div class="insight-card glass"><div class="insight-value" style="color:' + (change >= 0 ? '#00ff88' : '#ff4d6d') + ';">' +
-        (change >= 0 ? '↑' : '↓') + ' ' + Math.abs(change).toFixed(1) + '%</div><div class="insight-label">Perubahan</div></div>';
-    } else {
-      html += '<div class="insight-card glass"><div class="insight-value" style="color:#88a0b8;">-</div><div class="insight-label">Perubahan</div></div>';
-    }
-    
-    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(monthlyAvg) +
-      '</div><div class="insight-label">Rata-rata / Bulan</div></div>';
-    html += '<div class="insight-card glass"><div class="insight-value">' + txs.length +
-      '</div><div class="insight-label">Total Transaksi</div></div>';
-    html += '</div>';
-
-    // Period filter
-    html += '<div class="glass" style="margin-bottom:16px;">';
-    html +=
-      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
-    html += '<span style="font-weight:600;">📊 Grafik Saldo</span>';
-    html += '<div class="period-filters">';
-    periodOptions.forEach(function(p) {
-      html += '<button class="period-btn ' + (p.days === chartPeriod ? 'active' : '') +
-        '" onclick="setChartPeriod(' + p.days + ')">' + p.label + '</button>';
-    });
-    html += '</div></div>';
-
-    // Chart
-    if (!hasData) {
-      html += '<div class="empty-state" style="padding:30px 16px;">';
-      html += '<div class="empty-icon">📈</div>';
-      html += '<div class="empty-title">Belum ada data perkembangan saldo</div>';
-      html += '<div class="empty-desc">Mulai mencatat pemasukan, pengeluaran, atau tabungan untuk melihat perkembangan saldo kamu.</div>';
-      html += '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button>';
-      html += '</div>';
-    } else {
-      html += '<div class="analytics-chart" style="position:relative;">';
-      html += '<canvas id="balanceChart"></canvas>';
-      html += '<div id="chartTooltip" class="chart-tooltip" style="display:none;"></div>';
-      html += '</div>';
-    }
-    html += '</div>';
-
-    // Insights
-    if (hasData) {
-      html += '<div class="glass">';
-      html += '<div style="font-weight:600;margin-bottom:8px;">💡 Insight Keuangan</div>';
-      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-      insights.forEach(function(i) {
-        html += '<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:12px;border-left:3px solid ' +
-          (i.type === 'warning' ? '#ff4d6d' : i.type === 'positive' ? '#00ff88' : '#00e5ff') + ';">';
-        html += '<span style="font-size:0.85rem;">' + i.message + '</span></div>';
-      });
-      html += '</div></div>';
-    }
-
-    html += '</div>';
-
-    mainContent.innerHTML = html;
-
-    // Render chart after DOM update
-    if (hasData) {
-      setTimeout(function() {
-        drawBalanceChart('balanceChart', historyData);
-      }, 100);
-    }
-  }
-
-  function setChartPeriod(days) {
-    chartPeriod = days;
-    renderAnalytics();
-  }
-
-  // ============================================================
-  // 14. CHART FUNCTIONS (FIXED - Dengan Tooltip)
-  // ============================================================
-
-  function drawBalanceChart(canvasId, data) {
-    var canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    var rect = canvas.parentElement?.getBoundingClientRect();
-    var W = rect?.width || canvas.clientWidth || 400;
-    var H = rect?.height || 220;
-
-    canvas.width = W;
-    canvas.height = H;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-
-    var pad = { top: 30, right: 20, bottom: 30, left: 20 };
-    var chartW = W - pad.left - pad.right;
-    var chartH = H - pad.top - pad.bottom;
-
-    ctx.clearRect(0, 0, W, H);
-
-    if (!data || data.length === 0) {
-      return;
-    }
-
-    var values = data.map(function(d) { return d.balance; });
-    var labels = data.map(function(d) { return d.label; });
-    var maxVal = Math.max(1, Math.max.apply(null, values.map(Math.abs)));
-    var minVal = Math.min(0, Math.min.apply(null, values));
-    var range = maxVal - minVal || 1;
-
-    var isDark = !document.body.classList.contains('light-mode');
-    var colors = {
-      line: isDark ? '#00e5ff' : '#7c4dff',
-      fill: isDark ? 'rgba(0,229,255,0.05)' : 'rgba(124,77,255,0.05)',
-      grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-      text: isDark ? '#88a0b8' : '#6a6a8e',
-      point: isDark ? '#00e5ff' : '#7c4dff',
-      pointHover: isDark ? '#ffffff' : '#1a1a2e'
-    };
-
-    // Grid
-    ctx.strokeStyle = colors.grid;
-    ctx.lineWidth = 0.5;
-    for (var g = 0; g <= 4; g++) {
-      var y = pad.top + (chartH / 4) * g;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, y);
-      ctx.lineTo(W - pad.right, y);
-      ctx.stroke();
-    }
-
-    // Line
-    ctx.beginPath();
-    ctx.strokeStyle = colors.line;
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = colors.line + '66';
-    ctx.shadowBlur = 12;
-
-    var points = [];
-    for (var i = 0; i < values.length; i++) {
-      var x = pad.left + (i / (values.length - 1 || 1)) * chartW;
-      var y = pad.top + chartH - ((values[i] - minVal) / range) * chartH;
-      points.push({ x: x, y: y, index: i });
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // Area fill
-    ctx.beginPath();
-    var firstX = pad.left;
-    var firstY = pad.top + chartH - ((values[0] - minVal) / range) * chartH;
-    ctx.moveTo(firstX, pad.top + chartH);
-    ctx.lineTo(firstX, firstY);
-    for (var a = 0; a < values.length; a++) {
-      var ax = pad.left + (a / (values.length - 1 || 1)) * chartW;
-      var ay = pad.top + chartH - ((values[a] - minVal) / range) * chartH;
-      ctx.lineTo(ax, ay);
-    }
-    var lastX = pad.left + chartW;
-    ctx.lineTo(lastX, pad.top + chartH);
-    ctx.closePath();
-    ctx.fillStyle = colors.fill;
-    ctx.fill();
-
-    // Points
-    var tooltipData = [];
-    for (var p = 0; p < values.length; p++) {
-      var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
-      var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
-
-      ctx.beginPath();
-      ctx.arc(px, py, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = colors.point;
-      ctx.shadowColor = colors.point + '88';
-      ctx.shadowBlur = 15;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Label
-      if (values.length <= 10) {
-        ctx.fillStyle = colors.text;
-        ctx.font = '8px Rajdhani';
-        ctx.textAlign = 'center';
-        ctx.fillText(labels[p], px, H - 4);
-      }
-
-      tooltipData.push({
-        x: px,
-        y: py,
-        index: p,
-        date: data[p].date,
-        balance: data[p].balance,
-        income: data[p].income || 0,
-        expense: data[p].expense || 0,
-        label: labels[p]
-      });
-    }
-
-    // Tooltip interaction
-    var tooltip = document.getElementById('chartTooltip');
-    if (tooltip) {
-      canvas.addEventListener('mousemove', function(e) {
-        var rect = canvas.getBoundingClientRect();
-        var mouseX = e.clientX - rect.left;
-        var mouseY = e.clientY - rect.top;
-
-        var found = false;
-        for (var t = 0; t < tooltipData.length; t++) {
-          var pt = tooltipData[t];
-          var dist = Math.sqrt(Math.pow(mouseX - pt.x, 2) + Math.pow(mouseY - pt.y, 2));
-          if (dist < 20) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = (pt.x + 10) + 'px';
-            tooltip.style.top = (pt.y - 40) + 'px';
-            tooltip.innerHTML = 
-              '<div class="tooltip-date">' + formatDate(pt.date) + '</div>' +
-              '<div class="tooltip-amount">' + formatCurrency(pt.balance) + '</div>' +
-              (pt.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt.income) + '</div>' : '') +
-              (pt.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt.expense) + '</div>' : '');
-            
-            // Highlight point
-            ctx.beginPath();
-            ctx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
-            ctx.fillStyle = colors.pointHover;
-            ctx.shadowColor = colors.point + '88';
-            ctx.shadowBlur = 25;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          tooltip.style.display = 'none';
-          // Redraw points (simplified - just redraw chart)
-          drawBalanceChart(canvasId, data);
-        }
-      });
-
-      canvas.addEventListener('mouseleave', function() {
-        tooltip.style.display = 'none';
-      });
-
-      // Touch support
-      canvas.addEventListener('touchstart', function(e) {
-        e.preventDefault();
-        var rect = canvas.getBoundingClientRect();
-        var touch = e.touches[0];
-        var touchX = touch.clientX - rect.left;
-        var touchY = touch.clientY - rect.top;
-
-        for (var t2 = 0; t2 < tooltipData.length; t2++) {
-          var pt2 = tooltipData[t2];
-          var dist2 = Math.sqrt(Math.pow(touchX - pt2.x, 2) + Math.pow(touchY - pt2.y, 2));
-          if (dist2 < 30) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = (pt2.x + 10) + 'px';
-            tooltip.style.top = (pt2.y - 40) + 'px';
-            tooltip.innerHTML = 
-              '<div class="tooltip-date">' + formatDate(pt2.date) + '</div>' +
-              '<div class="tooltip-amount">' + formatCurrency(pt2.balance) + '</div>' +
-              (pt2.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt2.income) + '</div>' : '') +
-              (pt2.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt2.expense) + '</div>' : '');
-            break;
-          }
-        }
-      }, { passive: false });
-
-      canvas.addEventListener('touchend', function() {
-        setTimeout(function() {
-          tooltip.style.display = 'none';
-        }, 2000);
-      });
-    }
-
-    // X-axis labels for more than 10 values (show every nth)
-    if (values.length > 10) {
-      var step = Math.ceil(values.length / 8);
-      ctx.fillStyle = colors.text;
-      ctx.font = '7px Rajdhani';
-      ctx.textAlign = 'center';
-      for (var l = 0; l < values.length; l += step) {
-        var lx = pad.left + (l / (values.length - 1 || 1)) * chartW;
-        ctx.fillText(labels[l], lx, H - 4);
-      }
-    }
-  }
-
-  // ============================================================
-  // 15. SETTINGS FUNCTIONS
-  // ============================================================
-
-  function renderSettings() {
-    currentPage = 'settings';
-    var settings = appData.settings || {};
-
-    var hasNotificationSupport = 'Notification' in window;
-    var permission = hasNotificationSupport ? Notification.permission : 'denied';
-    var isPermissionGranted = permission === 'granted';
-    var isPermissionDenied = permission === 'denied';
-
-    var notificationState = localStorage.getItem(NOTIFICATION_KEY);
-    var isNotificationOn = notificationState === 'enabled' && isPermissionGranted;
-
-    var html = '';
-    html += '<div class="page-container active">';
-    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">⚙️ Pengaturan</div>';
-
-    // Theme
-    html += '<div class="glass" style="margin-bottom:12px;">';
-    html +=
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tampilan</h4>';
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-    html += '<button class="neon-btn small ' + (settings.theme === 'dark' ? 'active' : '') +
-      '" onclick="setTheme(\'dark\')">🌙 Dark</button>';
-    html += '<button class="neon-btn small ' + (settings.theme === 'light' ? 'active' : '') +
-      '" onclick="setTheme(\'light\')">☀️ Light</button>';
-    html += '<button class="neon-btn small ' + (settings.theme === 'system' ? 'active' : '') +
-      '" onclick="setTheme(\'system\')">🖥️ System</button>';
-    html += '</div></div>';
-
-    // Notification
-    html += '<div class="glass" style="margin-bottom:12px;">';
-    html +=
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🔔 Pengingat Menabung</h4>';
-    
-    if (isPermissionDenied) {
-      html += '<div class="notification-permission-denied">';
-      html += '<span class="denied-icon">❌</span>';
-      html += '<span>Notifikasi diblokir oleh browser. Silakan aktifkan izin notifikasi di pengaturan browser.</span>';
-      html += '</div>';
-    } else {
-      html += '<div class="notification-toggle-wrapper">';
-      html += '<div class="notification-toggle-info">';
-      html += '<div class="toggle-label">';
-      html += isNotificationOn ? '✓' : '🔔';
-      html += ' <span>' + (isNotificationOn ? 'Pengingat Menabung Aktif' : 'Aktifkan Pengingat Menabung') + '</span>';
-      html += '</div>';
-      html += '<div class="toggle-desc">' + 
-        (isNotificationOn ? 'Kamu akan mendapatkan pengingat untuk tetap konsisten menabung.' : 
-        'Dapatkan pengingat untuk tetap konsisten menabung.') +
-      '</div>';
-      html += '</div>';
-      
-      html += '<div class="notification-toggle-status">';
-      html += '<div class="toggle-switch-modern' + (isNotificationOn ? ' is-active' : '') + 
-        '" onclick="toggleNotification()" role="button" aria-pressed="' + (isNotificationOn ? 'true' : 'false') + 
-        '" aria-label="' + (isNotificationOn ? 'Nonaktifkan' : 'Aktifkan') + ' Pengingat Menabung" tabindex="0">';
-      html += '<div class="toggle-track"></div>';
-      html += '<div class="toggle-thumb"></div>';
-      html += '</div>';
-      html += '<span class="toggle-status-text ' + (isNotificationOn ? 'on' : 'off') + '">' + 
-        (isNotificationOn ? 'ON' : 'OFF') + '</span>';
-      html += '</div>';
-      html += '</div>';
-      
-      if (hasNotificationSupport && permission === 'default') {
-        html += '<div style="margin-top:8px;font-size:0.7rem;color:#88a0b8;">';
-        html += '💡 Klik toggle untuk meminta izin notifikasi browser.';
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-
-    // Data
-    html += '<div class="glass" style="margin-bottom:12px;">';
-    html +=
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Data</h4>';
-    html +=
-      '<div style="display:flex;flex-direction:column;gap:8px;">';
-    html +=
-      '<button class="neon-btn small" onclick="downloadBackup()" style="width:100%;text-align:center;">📥 Download Backup</button>';
-    html +=
-      '<button class="neon-btn small" onclick="document.getElementById(\'restoreInput\').click()" style="width:100%;text-align:center;">📤 Restore Backup</button>';
-    html +=
-      '<input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreBackup(this)" />';
-    html +=
-      '<button class="neon-btn danger small" onclick="openResetModal()" style="width:100%;text-align:center;">🗑️ Reset Semua Data</button>';
-    html += '</div></div>';
-
-    // Data Warning
-    html += '<div class="data-warning" style="margin-bottom:12px;">';
-    html += '<span class="warning-icon">🔒</span>';
-    html +=
-      '<span>Data tersimpan secara lokal di perangkat ini. <strong>Download backup</strong> secara rutin untuk menghindari kehilangan data.</span>';
-    html += '</div>';
-
-    // About
-    html += '<div class="glass" style="margin-bottom:12px;">';
-    html +=
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
-    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.2</p>';
-    html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
-    html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
-    html +=
-      '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>';
-    html += '</div>';
-
-    // JHON FORUM ACCESS
-    html += '<div class="jhon-forum-card">';
-    html += '<div class="jhon-forum-title">JHON FORUM ACCESS</div>';
-    html += '<div class="jhon-forum-divider"></div>';
-    html +=
-      '<p class="jhon-forum-desc">Bergabunglah dengan saluran komunikasi kami untuk pembaruan sistem & pelaporan bug.</p>';
-    html +=
-      '<a href="https://whatsapp.com/channel/0029VaLiUSS5q08hPj5mcH0m" target="_blank" rel="noopener noreferrer" class="jhon-forum-btn">Join Saluran</a>';
-    html += '</div>';
-
-    mainContent.innerHTML = html;
-  }
-
-  // ============================================================
-  // 16. NOTIFICATION FUNCTIONS
+  // 21. NOTIFICATION FUNCTIONS
   // ============================================================
 
   function toggleNotification() {
@@ -1951,7 +1934,7 @@
   }
 
   // ============================================================
-  // 17. THEME FUNCTIONS
+  // 22. THEME FUNCTIONS
   // ============================================================
 
   function setTheme(theme) {
@@ -1959,7 +1942,7 @@
     saveData(appData);
     applyTheme(theme);
     showToast('Tema: ' + theme, 'success');
-    renderCurrentPage();
+    renderAppView(appState.currentView);
   }
 
   function applyTheme(theme) {
@@ -1969,7 +1952,7 @@
   }
 
   // ============================================================
-  // 18. BACKUP / RESTORE FUNCTIONS
+  // 23. BACKUP / RESTORE FUNCTIONS
   // ============================================================
 
   function downloadBackup() {
@@ -2003,7 +1986,7 @@
         var success = importData(e.target.result);
         if (success) {
           appData = loadData();
-          renderCurrentPage();
+          renderAppView(appState.currentView);
           showToast('📤 Backup berhasil dipulihkan', 'success');
         } else {
           showToast('Format backup tidak valid', 'error');
@@ -2017,7 +2000,7 @@
   }
 
   // ============================================================
-  // 19. RESET MODAL FUNCTIONS
+  // 24. RESET MODAL FUNCTIONS
   // ============================================================
 
   function openResetModal() {
@@ -2026,13 +2009,13 @@
     modal.id = 'resetModal';
     modal.innerHTML =
       '<div class="popup-glass">' +
-      '<button class="modal-close" onclick="closeModal(\'resetModal\')">✕</button>' +
+      '<button class="modal-close" onclick="App.closeModal(\'resetModal\')">✕</button>' +
       '<div class="popup-title">⚠️ RESET NEONVAULT</div>' +
       '<p style="color:#ff6b6b;font-weight:500;margin:8px 0;">Semua transaksi, saldo dan target akan dihapus.</p>' +
       '<p style="margin:12px 0 8px;color:#b0c4de;">Ketik <strong>HAPUS</strong> untuk konfirmasi:</p>' +
       '<input type="text" id="resetConfirm" placeholder="Ketik HAPUS" maxlength="10" style="text-transform:uppercase;" oninput="document.getElementById(\'resetBtn\').disabled = this.value !== \'HAPUS\'" aria-label="Konfirmasi reset" />' +
-      '<button id="resetBtn" class="neon-btn danger full" disabled onclick="confirmReset()">Hapus Semua Data</button>' +
-      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'resetModal\')">Batal</button>' +
+      '<button id="resetBtn" class="neon-btn danger full" disabled onclick="App.confirmReset()">Hapus Semua Data</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="App.closeModal(\'resetModal\')">Batal</button>' +
       '</div>';
 
     document.body.appendChild(modal);
@@ -2054,60 +2037,118 @@
   }
 
   // ============================================================
-  // 20. RENDER CURRENT PAGE
+  // 25. ONBOARDING MENU FUNCTIONS
   // ============================================================
 
-  function renderCurrentPage() {
-    // Check if onboarding is active
-    if (onboarding && onboarding.classList.contains('active')) {
-      // If rules page is active inside onboarding, render rules
-      if (currentPage === 'rules') {
-        renderRulesPage();
+  function toggleOnboardingMenu() {
+    if (appState.mode !== APP_MODES.ONBOARDING) return;
+    
+    appState.isOnboardingMenuOpen = !appState.isOnboardingMenuOpen;
+    if (appState.isOnboardingMenuOpen) {
+      onboardingMobileMenu.classList.add('open');
+      onboardingHamburger.setAttribute('aria-expanded', 'true');
+    } else {
+      onboardingMobileMenu.classList.remove('open');
+      onboardingHamburger.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function closeOnboardingMenu() {
+    appState.isOnboardingMenuOpen = false;
+    onboardingMobileMenu.classList.remove('open');
+    onboardingHamburger.setAttribute('aria-expanded', 'false');
+  }
+
+  // ============================================================
+  // 26. START APP
+  // ============================================================
+
+  function startApp() {
+    // Check if user already has name
+    if (appData.settings.userName) {
+      // Enter app mode
+      appState.mode = APP_MODES.APP;
+      appState.currentView = 'dashboard';
+      appState.pageHistory = [];
+      
+      try {
+        history.replaceState(
+          { mode: APP_MODES.APP, view: 'dashboard' },
+          'NEONVAULT - Dashboard',
+          '#dashboard'
+        );
+      } catch (e) {}
+      
+      renderApp();
+      
+      // Start reminders if enabled
+      if (notificationEnabled && Notification.permission === 'granted') {
+        startReminders();
       }
+      
+      showToast('Selamat datang kembali, ' + appData.settings.userName + '! ✦', 'success');
+    } else {
+      // Show name popup
+      namePopup.classList.add('active');
+      setTimeout(function() {
+        nameInput.focus();
+      }, 100);
+    }
+  }
+
+  function confirmName() {
+    var name = nameInput.value.trim();
+    if (!name) {
+      showToast('Masukkan nama terlebih dahulu', 'error');
+      nameInput.focus();
       return;
     }
     
-    switch (currentPage) {
-      case 'dashboard':
-        renderDashboard();
-        break;
-      case 'goals':
-        renderGoals();
-        break;
-      case 'goalDetail':
-        renderGoalDetail();
-        break;
-      case 'transactions':
-        renderTransactions();
-        break;
-      case 'analytics':
-        renderAnalytics();
-        break;
-      case 'settings':
-        renderSettings();
-        break;
-      case 'rules':
-        // Rules should only render inside onboarding
-        if (onboarding) onboarding.classList.add('active');
-        renderRulesPage();
-        break;
-      default:
-        renderDashboard();
+    appData.settings.userName = name;
+    appData.settings.onboardingComplete = true;
+    saveData(appData);
+    
+    namePopup.classList.remove('active');
+    
+    // Enter app mode
+    appState.mode = APP_MODES.APP;
+    appState.currentView = 'dashboard';
+    appState.pageHistory = [];
+    
+    try {
+      history.replaceState(
+        { mode: APP_MODES.APP, view: 'dashboard' },
+        'NEONVAULT - Dashboard',
+        '#dashboard'
+      );
+    } catch (e) {}
+    
+    renderApp();
+    
+    // Start reminders if enabled
+    if (notificationEnabled && Notification.permission === 'granted') {
+      startReminders();
     }
+    
+    showToast('Selamat datang, ' + name + '! ✦', 'success');
   }
+
+  // ============================================================
+  // 27. CLOCK
+  // ============================================================
 
   function updateClock() {
     try {
       var now = new Date();
-      if (clockEl) {
-        clockEl.textContent = now.toLocaleTimeString('id-ID', {
+      if (appClock) {
+        appClock.textContent = now.toLocaleTimeString('id-ID', {
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit'
         });
       }
-      if (dateEl) {
-        dateEl.textContent = now.toLocaleDateString('id-ID', {
+      if (appDate) {
+        appDate.textContent = now.toLocaleDateString('id-ID', {
           day: 'numeric',
           month: 'short',
           year: 'numeric'
@@ -2117,506 +2158,169 @@
   }
 
   // ============================================================
-  // 21. NAVIGATION SETUP
+  // 28. POPSTATE HANDLER
   // ============================================================
 
-  function setupNavigation() {
-    // Bottom navigation
-    document.querySelectorAll('.nav-item').forEach(function(item) {
-      item.addEventListener('click', function() {
-        if (onboarding && onboarding.classList.contains('active')) return;
-        var page = this.dataset.page;
-        currentGoalId = null;
-        navigateTo(page);
-      });
-    });
+  function handlePopState(e) {
+    if (e.state) {
+      if (e.state.mode === APP_MODES.ONBOARDING) {
+        appState.mode = APP_MODES.ONBOARDING;
+        appState.currentView = e.state.view || 'onboarding';
+        renderApp();
+      } else if (e.state.mode === APP_MODES.APP) {
+        appState.mode = APP_MODES.APP;
+        appState.currentView = e.state.view || 'dashboard';
+        renderApp();
+      }
+    } else {
+      // No state, go to appropriate default
+      if (appState.mode === APP_MODES.ONBOARDING) {
+        appState.currentView = 'onboarding';
+        renderApp();
+      } else {
+        appState.currentView = 'dashboard';
+        renderApp();
+      }
+    }
+  }
 
-    // Onboarding navigation
-    var hamburgerBtn = document.getElementById('hamburgerBtn');
-    var mobileClose = document.getElementById('mobileMenuClose');
+  // ============================================================
+  // 29. EXPOSE GLOBALLY
+  // ============================================================
+
+  var App = {
+    // Navigation
+    navigateToRules: navigateToRules,
+    navigateToAbout: navigateToAbout,
+    goBackOnboarding: goBackOnboarding,
+    navigateToApp: navigateToApp,
+    goBackApp: goBackApp,
+    startApp: startApp,
+    confirmName: confirmName,
     
-    if (hamburgerBtn) {
-      hamburgerBtn.addEventListener('click', toggleMobileMenu);
-    }
-    if (mobileClose) {
-      mobileClose.addEventListener('click', closeMobileMenu);
-    }
-
-    // Close mobile menu on outside click
-    document.addEventListener('click', function(e) {
-      var menu = document.getElementById('onboardingMobileMenu');
-      var hamburger = document.getElementById('hamburgerBtn');
-      if (menu && menu.classList.contains('open')) {
-        if (!menu.contains(e.target) && !hamburger.contains(e.target)) {
-          closeMobileMenu();
-        }
-      }
-    });
-
-    // Expose navigation functions globally
-    window.navigateTo = navigateTo;
-    window.goBack = goBack;
-    window.toggleNotification = toggleNotification;
-    window.navigateToRules = navigateToRules;
-    window.startOnboarding = startOnboarding;
-    window.closeMobileMenu = closeMobileMenu;
-    window.toggleMobileMenu = toggleMobileMenu;
-  }
-
-  // ============================================================
-  // 22. STYLES INJECTION
-  // ============================================================
-
-  function injectStyles() {
-    var style = document.createElement('style');
-    style.textContent = `
-      .back-button {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(255, 255, 255, 0.04);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(0, 229, 255, 0.15);
-        color: #00e5ff;
-        padding: 10px 20px;
-        border-radius: 60px;
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 0.95rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: 0.3s ease;
-        box-shadow: 0 0 20px rgba(0, 229, 255, 0.05);
-        touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent;
-        min-height: 44px;
-        min-width: 44px;
-        user-select: none;
-      }
-      .back-button:hover {
-        background: rgba(0, 229, 255, 0.1);
-        box-shadow: 0 0 30px rgba(0, 229, 255, 0.15);
-        transform: translateX(-4px);
-      }
-      .back-button:active {
-        transform: scale(0.97);
-      }
-      body.light-mode .back-button {
-        border-color: rgba(124, 77, 255, 0.2);
-        color: #7c4dff;
-      }
-      body.light-mode .back-button:hover {
-        background: rgba(124, 77, 255, 0.1);
-        box-shadow: 0 0 30px rgba(124, 77, 255, 0.15);
-      }
-      @media (max-width: 480px) {
-        .back-button {
-          padding: 8px 16px;
-          font-size: 0.85rem;
-          min-height: 40px;
-        }
-      }
-
-      /* JHON FORUM ACCESS */
-      .jhon-forum-card {
-        background: rgba(255, 255, 255, 0.04);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(0, 229, 255, 0.12);
-        border-radius: clamp(18px, 2.5vw, 24px);
-        padding: clamp(16px, 2vw, 24px);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 30px rgba(0, 229, 255, 0.03);
-        transition: 0.3s ease;
-        position: relative;
-        overflow: hidden;
-        margin-bottom: 12px;
-      }
-      .jhon-forum-card:hover {
-        border-color: rgba(0, 229, 255, 0.3);
-        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 229, 255, 0.08);
-        transform: translateY(-2px);
-      }
-      .jhon-forum-title {
-        font-family: 'Orbitron', monospace;
-        font-size: clamp(0.85rem, 1.8vw, 1.1rem);
-        font-weight: 700;
-        color: #00e5ff;
-        text-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-      }
-      .jhon-forum-divider {
-        width: 100%;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.3), transparent);
-        margin: 6px 0 12px;
-      }
-      .jhon-forum-desc {
-        color: #b0c4de;
-        font-size: clamp(0.8rem, 1.2vw, 0.9rem);
-        line-height: 1.5;
-        margin-bottom: 14px;
-      }
-      .jhon-forum-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1.5px solid #00e5ff;
-        color: #00e5ff;
-        padding: clamp(10px, 1.5vw, 12px) clamp(24px, 3vw, 36px);
-        border-radius: 60px;
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 600;
-        font-size: clamp(0.85rem, 1.3vw, 1rem);
-        letter-spacing: 1px;
-        cursor: pointer;
-        transition: 0.25s ease;
-        box-shadow: 0 0 20px rgba(0, 229, 255, 0.12);
-        user-select: none;
-        touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent;
-        text-decoration: none;
-        width: 100%;
-        text-align: center;
-        min-height: 44px;
-      }
-      .jhon-forum-btn:hover {
-        background: rgba(0, 229, 255, 0.12);
-        box-shadow: 0 0 40px rgba(0, 229, 255, 0.3);
-        transform: scale(1.02);
-        color: #00e5ff;
-      }
-      .jhon-forum-btn:active {
-        transform: scale(0.97);
-      }
-      body.light-mode .jhon-forum-card {
-        background: rgba(255, 255, 255, 0.7);
-        border-color: rgba(0, 0, 0, 0.06);
-      }
-      body.light-mode .jhon-forum-title {
-        color: #7c4dff;
-        text-shadow: 0 0 30px rgba(124, 77, 255, 0.2);
-      }
-      body.light-mode .jhon-forum-divider {
-        background: linear-gradient(90deg, transparent, rgba(124, 77, 255, 0.2), transparent);
-      }
-      body.light-mode .jhon-forum-desc {
-        color: #4a4a6e;
-      }
-      body.light-mode .jhon-forum-btn {
-        border-color: #7c4dff;
-        color: #7c4dff;
-        box-shadow: 0 0 20px rgba(124, 77, 255, 0.12);
-      }
-      body.light-mode .jhon-forum-btn:hover {
-        background: rgba(124, 77, 255, 0.12);
-        box-shadow: 0 0 40px rgba(124, 77, 255, 0.3);
-        color: #7c4dff;
-      }
-      body.light-mode .jhon-forum-card:hover {
-        border-color: rgba(124, 77, 255, 0.3);
-      }
-
-      /* Notification Toggle */
-      .notification-toggle-wrapper {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 8px 0;
-        flex-wrap: wrap;
-      }
-      .notification-toggle-info {
-        flex: 1;
-        min-width: 140px;
-      }
-      .notification-toggle-info .toggle-label {
-        font-weight: 600;
-        font-size: clamp(0.9rem, 1.3vw, 1rem);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .notification-toggle-info .toggle-desc {
-        font-size: clamp(0.7rem, 1vw, 0.8rem);
-        color: #88a0b8;
-        margin-top: 2px;
-      }
-      .notification-toggle-status {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-shrink: 0;
-      }
-      .toggle-switch-modern {
-        position: relative;
-        width: 52px;
-        height: 28px;
-        background: rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        cursor: pointer;
-        transition: 0.3s ease;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        flex-shrink: 0;
-        touch-action: manipulation;
-      }
-      .toggle-switch-modern .toggle-track {
-        position: absolute;
-        inset: 0;
-        border-radius: 14px;
-        transition: 0.3s ease;
-        background: rgba(255, 255, 255, 0.05);
-      }
-      .toggle-switch-modern .toggle-thumb {
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        background: #88a0b8;
-        transition: 0.3s ease;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      }
-      .toggle-switch-modern.is-active {
-        border-color: rgba(0, 229, 255, 0.3);
-      }
-      .toggle-switch-modern.is-active .toggle-track {
-        background: rgba(0, 229, 255, 0.15);
-      }
-      .toggle-switch-modern.is-active .toggle-thumb {
-        transform: translateX(24px);
-        background: #00e5ff;
-        box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
-      }
-      .toggle-switch-modern:hover {
-        border-color: rgba(0, 229, 255, 0.2);
-      }
-      .toggle-switch-modern.is-active:hover {
-        border-color: rgba(0, 229, 255, 0.4);
-      }
-      .toggle-status-text {
-        font-size: clamp(0.7rem, 1vw, 0.8rem);
-        font-weight: 600;
-        min-width: 36px;
-        text-align: center;
-        transition: 0.3s ease;
-      }
-      .toggle-status-text.off {
-        color: #88a0b8;
-      }
-      .toggle-status-text.on {
-        color: #00ff88;
-      }
-      .notification-permission-denied {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
-        background: rgba(255, 77, 109, 0.08);
-        border: 1px solid rgba(255, 77, 109, 0.15);
-        border-radius: 12px;
-        color: #ff4d6d;
-        font-size: clamp(0.75rem, 1vw, 0.85rem);
-      }
-      .notification-permission-denied .denied-icon {
-        font-size: 1.2rem;
-      }
-      body.light-mode .toggle-switch-modern {
-        background: rgba(0, 0, 0, 0.06);
-        border-color: rgba(0, 0, 0, 0.08);
-      }
-      body.light-mode .toggle-switch-modern .toggle-track {
-        background: rgba(0, 0, 0, 0.05);
-      }
-      body.light-mode .toggle-switch-modern .toggle-thumb {
-        background: #6a6a8e;
-      }
-      body.light-mode .toggle-switch-modern.is-active {
-        border-color: rgba(124, 77, 255, 0.3);
-      }
-      body.light-mode .toggle-switch-modern.is-active .toggle-track {
-        background: rgba(124, 77, 255, 0.15);
-      }
-      body.light-mode .toggle-switch-modern.is-active .toggle-thumb {
-        background: #7c4dff;
-        box-shadow: 0 0 20px rgba(124, 77, 255, 0.3);
-      }
-      body.light-mode .toggle-status-text.off {
-        color: #6a6a8e;
-      }
-      body.light-mode .toggle-status-text.on {
-        color: #00a86b;
-      }
-      body.light-mode .notification-permission-denied {
-        background: rgba(231, 76, 60, 0.08);
-        border-color: rgba(231, 76, 60, 0.15);
-        color: #e74c3c;
-      }
-      @media (max-width: 480px) {
-        .notification-toggle-wrapper {
-          flex-direction: column;
-          align-items: stretch;
-          gap: 12px;
-        }
-        .notification-toggle-status {
-          justify-content: flex-start;
-        }
-        .toggle-switch-modern {
-          width: 48px;
-          height: 26px;
-        }
-        .toggle-switch-modern .toggle-thumb {
-          width: 20px;
-          height: 20px;
-          top: 2px;
-          left: 2px;
-        }
-        .toggle-switch-modern.is-active .toggle-thumb {
-          transform: translateX(22px);
-        }
-      }
-    `;
-    document.head.appendChild(style);
-  }
+    // Onboarding Menu
+    toggleOnboardingMenu: toggleOnboardingMenu,
+    closeOnboardingMenu: closeOnboardingMenu,
+    
+    // Modals
+    openTransactionModal: openTransactionModal,
+    confirmTransaction: confirmTransaction,
+    undoTransaction: undoTransaction,
+    closeModal: closeModal,
+    
+    // Goals
+    openGoalModal: openGoalModal,
+    confirmGoal: confirmGoal,
+    deleteGoal: deleteGoal,
+    openGoalAddModal: openGoalAddModal,
+    confirmGoalAdd: confirmGoalAdd,
+    selectColor: selectColor,
+    
+    // Transactions
+    filterTransactions: filterTransactions,
+    
+    // Analytics
+    setChartPeriod: setChartPeriod,
+    
+    // Settings
+    setTheme: setTheme,
+    toggleNotification: toggleNotification,
+    downloadBackup: downloadBackup,
+    restoreBackup: restoreBackup,
+    openResetModal: openResetModal,
+    confirmReset: confirmReset,
+    
+    // App
+    renderAppView: renderAppView,
+    updateClock: updateClock
+  };
 
   // ============================================================
-  // 23. EXPOSE GLOBALLY
-  // ============================================================
-
-  window.openTransactionModal = openTransactionModal;
-  window.confirmTransaction = confirmTransaction;
-  window.undoTransaction = undoTransaction;
-  window.openGoalModal = openGoalModal;
-  window.confirmGoal = confirmGoal;
-  window.deleteGoal = deleteGoal;
-  window.openGoalAddModal = openGoalAddModal;
-  window.confirmGoalAdd = confirmGoalAdd;
-  window.closeModal = closeModal;
-  window.showToast = showToast;
-  window.filterTransactions = filterTransactions;
-  window.selectColor = selectColor;
-  window.setTheme = setTheme;
-  window.downloadBackup = downloadBackup;
-  window.restoreBackup = restoreBackup;
-  window.openResetModal = openResetModal;
-  window.confirmReset = confirmReset;
-  window.navigateTo = navigateTo;
-  window.goBack = goBack;
-  window.toggleNotification = toggleNotification;
-  window.setChartPeriod = setChartPeriod;
-  window.navigateToRules = navigateToRules;
-  window.startOnboarding = startOnboarding;
-  window.closeMobileMenu = closeMobileMenu;
-  window.toggleMobileMenu = toggleMobileMenu;
-
-  // ============================================================
-  // 24. INITIALIZATION
+  // 30. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
+      // Load notification state
       var savedNotification = localStorage.getItem(NOTIFICATION_KEY);
       notificationEnabled = savedNotification === 'enabled';
 
+      // Load data
       appData = loadData();
       applyTheme(appData.settings.theme || 'dark');
 
-      injectStyles();
+      // Check if user has completed onboarding
+      var onboardingComplete = appData.settings.onboardingComplete && appData.settings.userName;
 
-      // Handle onboarding
-      if (!appData.settings.onboardingComplete) {
-        onboarding.classList.add('active');
-        loadingScreen.classList.add('hidden');
-      } else if (!appData.settings.userName) {
-        onboarding.classList.remove('active');
-        namePopup.classList.add('active');
-        loadingScreen.classList.add('hidden');
-        setTimeout(function() {
-          if (nameInput) nameInput.focus();
-        }, 100);
+      if (!onboardingComplete) {
+        appState.mode = APP_MODES.ONBOARDING;
+        appState.currentView = 'onboarding';
       } else {
-        onboarding.classList.remove('active');
-        namePopup.classList.remove('active');
-        dashboard.classList.add('active');
-        loadingScreen.classList.add('hidden');
-        renderDashboard();
-        if (notificationEnabled && Notification.permission === 'granted') {
-          startReminders();
-        }
+        appState.mode = APP_MODES.APP;
+        appState.currentView = 'dashboard';
       }
 
-      // Onboarding start button
-      onboardingStart.addEventListener('click', function() {
-        appData.settings.onboardingComplete = true;
-        saveData(appData);
-        onboarding.classList.remove('active');
-        namePopup.classList.add('active');
-        setTimeout(function() {
-          if (nameInput) nameInput.focus();
-        }, 100);
-      });
+      // Render app
+      renderApp();
 
-      // Name popup start
-      startBtn.addEventListener('click', function() {
-        var name = nameInput.value.trim();
-        if (!name) {
-          showToast('Masukkan nama terlebih dahulu', 'error');
-          nameInput.focus();
-          return;
-        }
-        appData.settings.userName = name;
-        saveData(appData);
-        namePopup.classList.remove('active');
-        dashboard.classList.add('active');
-        renderDashboard();
-        if (notificationEnabled && Notification.permission === 'granted') {
-          startReminders();
-        }
-        showToast('Selamat datang, ' + name + '! ✦', 'success');
-      });
+      // Start reminders if in app mode
+      if (appState.mode === APP_MODES.APP && notificationEnabled && Notification.permission === 'granted') {
+        startReminders();
+      }
 
+      // Setup event listeners
+      onboardingStartBtn.addEventListener('click', startApp);
+      onboardingHamburger.addEventListener('click', toggleOnboardingMenu);
+      onboardingMobileClose.addEventListener('click', closeOnboardingMenu);
+      startBtn.addEventListener('click', confirmName);
       nameInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-          startBtn.click();
+        if (e.key === 'Enter') confirmName();
+      });
+
+      // Close mobile menu on outside click
+      document.addEventListener('click', function(e) {
+        if (appState.isOnboardingMenuOpen) {
+          var menu = onboardingMobileMenu;
+          var hamburger = onboardingHamburger;
+          if (menu && !menu.contains(e.target) && !hamburger.contains(e.target)) {
+            closeOnboardingMenu();
+          }
         }
       });
 
-      // Settings toggle
-      settingsToggle.addEventListener('click', function() {
-        currentGoalId = null;
-        navigateTo('settings');
+      // ESC key closes menu
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          if (appState.isOnboardingMenuOpen) {
+            closeOnboardingMenu();
+          }
+          // Close any open modals
+          document.querySelectorAll('.popup-overlay.active').forEach(function(modal) {
+            modal.classList.remove('active');
+          });
+        }
       });
 
+      // Popstate handler
+      window.addEventListener('popstate', handlePopState);
+
+      // Clock
       updateClock();
       setInterval(updateClock, 1000);
 
-      setupNavigation();
-
-      // Handle initial hash
-      var hash = window.location.hash;
-      if (hash) {
-        var parts = hash.replace('#', '').split('/');
-        if (parts[0] === 'goalDetail' && parts[1]) {
-          currentGoalId = parts[1];
-          navigateTo('goalDetail', currentGoalId);
-        } else if (parts[0]) {
-          navigateTo(parts[0]);
-        }
-      }
-
       console.log('🚀 NEONVAULT V2.0.2 initialized successfully!');
+      console.log('📊 Mode:', appState.mode);
+      console.log('📊 View:', appState.currentView);
       console.log('📊 Data:', appData);
 
     } catch (e) {
       console.error('Init error:', e);
       loadingScreen.classList.add('hidden');
-      onboarding.classList.add('active');
+      onboardingContainer.classList.add('active');
     }
   }
 
+  // Start when DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
