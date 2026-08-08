@@ -34,7 +34,7 @@
     <div class="popup-glass">
       <div class="popup-title">✦ SELAMAT DATANG ✦</div>
       <p class="popup-sub">Masukkan nama untuk memulai</p>
-      <input type="text" id="nameInput" placeholder="Nama Anda" maxlength="25" autofocus />
+      <input type="text" id="nameInput" placeholder="Nama Anda" maxlength="25" autofocus aria-label="Nama Anda" />
       <button id="startBtn" class="neon-btn">Mulai</button>
     </div>
   </div>
@@ -44,8 +44,8 @@
     <header class="glass-header">
       <div class="logo">✦ NEONVAULT</div>
       <div class="header-right">
-        <span id="realTimeClock">--:--:--</span>
-        <span id="realTimeDate">--</span>
+        <span id="realTimeClock" aria-label="Jam">--:--:--</span>
+        <span id="realTimeDate" aria-label="Tanggal">--</span>
         <button id="settingsToggle" class="icon-btn" aria-label="Pengaturan">⚙️</button>
       </div>
     </header>
@@ -55,8 +55,32 @@
     </main>
   </div>
 
+  <!-- ===== BOTTOM NAVIGATION (Mobile) ===== -->
+  <nav class="bottom-nav" id="bottomNav" aria-label="Navigasi Utama">
+    <button class="nav-item active" data-page="dashboard" aria-label="Beranda">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Beranda</span>
+    </button>
+    <button class="nav-item" data-page="goals" aria-label="Target">
+      <span class="nav-icon">🎯</span>
+      <span class="nav-label">Target</span>
+    </button>
+    <button class="nav-item" data-page="transactions" aria-label="Transaksi">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Transaksi</span>
+    </button>
+    <button class="nav-item" data-page="analytics" aria-label="Analitik">
+      <span class="nav-icon">📈</span>
+      <span class="nav-label">Analitik</span>
+    </button>
+    <button class="nav-item" data-page="settings" aria-label="Pengaturan">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Pengaturan</span>
+    </button>
+  </nav>
+
   <!-- ===== TOAST CONTAINER ===== -->
-  <div id="toastContainer" class="toast-container"></div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
   <script src="app.js"></script>
 </body>

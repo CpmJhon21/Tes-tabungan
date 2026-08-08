@@ -1,8 +1,7 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2 Main Application
+ * app.js – NEONVAULT V2 Complete
  * Version: 2.0.0
- * Description: Personal Savings Manager with Cyberpunk Design
  * ============================================================
  */
 
@@ -97,6 +96,15 @@
     return div.innerHTML;
   }
 
+  function validateAmount(value) {
+    var num = parseInt(value);
+    return !isNaN(num) && num > 0 && num < 999999999;
+  }
+
+  function validateName(text) {
+    return text && text.trim().length > 0 && text.trim().length <= 50;
+  }
+
   // ============================================================
   // 2. FINANCE CALCULATIONS
   // ============================================================
@@ -142,8 +150,124 @@
     return Math.min(100, (goal.saved / goal.target) * 100);
   }
 
+  function getTransactionsByDate(txs, days) {
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return txs.filter(function(t) { return new Date(t.date) >= cutoff; });
+  }
+
+  function getSavingRate(txs, days) {
+    var recent = getTransactionsByDate(txs, days || 30);
+    var income = recent.filter(function(t) { return t.type === 'income'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+    var expense = recent.filter(function(t) { return t.type === 'expense'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+    var saving = recent.filter(function(t) { return t.type === 'saving'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+    if (income === 0) return 0;
+    return ((income - expense - saving) / income) * 100;
+  }
+
+  function getDailyAverage(txs, days) {
+    var recent = getTransactionsByDate(txs, days || 30);
+    var total = recent.reduce(function(sum, t) {
+      if (t.type === 'income') return sum + t.amount;
+      if (t.type === 'expense') return sum - t.amount;
+      return sum;
+    }, 0);
+    return days > 0 ? total / days : 0;
+  }
+
+  function getMonthlyTrend(txs, months) {
+    months = months || 6;
+    var trends = [];
+    var now = new Date();
+    for (var i = months - 1; i >= 0; i--) {
+      var month = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      var monthTxs = txs.filter(function(t) {
+        var d = new Date(t.date);
+        return d >= month && d < nextMonth;
+      });
+      var income = monthTxs.filter(function(t) { return t.type === 'income'; })
+        .reduce(function(s, t) { return s + t.amount; }, 0);
+      var expense = monthTxs.filter(function(t) { return t.type === 'expense'; })
+        .reduce(function(s, t) { return s + t.amount; }, 0);
+      var saving = monthTxs.filter(function(t) { return t.type === 'saving'; })
+        .reduce(function(s, t) { return s + t.amount; }, 0);
+      trends.push({
+        month: month.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
+        income: income,
+        expense: expense,
+        saving: saving,
+        balance: income - expense - saving
+      });
+    }
+    return trends;
+  }
+
+  function getCategoryBreakdown(txs, type) {
+    type = type || 'expense';
+    var breakdown = {};
+    var filtered = txs.filter(function(t) { return t.type === type; });
+    filtered.forEach(function(t) {
+      if (!breakdown[t.category]) breakdown[t.category] = 0;
+      breakdown[t.category] += t.amount;
+    });
+    var total = Object.values(breakdown).reduce(function(s, v) { return s + v; }, 0);
+    return Object.keys(breakdown).map(function(cat) {
+      return {
+        category: cat,
+        amount: breakdown[cat],
+        percentage: total > 0 ? (breakdown[cat] / total) * 100 : 0,
+        icon: getCategoryIcon(cat),
+        name: getCategoryName(cat)
+      };
+    }).sort(function(a, b) { return b.amount - a.amount; });
+  }
+
+  function generateInsights(txs, goals) {
+    var insights = [];
+    var totalInc = getTotalIncome(txs);
+    var totalExp = getTotalExpense(txs);
+    if (totalInc > 0 && totalExp > 0) {
+      var ratio = totalExp / totalInc;
+      if (ratio > 0.7) {
+        insights.push({
+          type: 'warning',
+          message: 'Pengeluaran mencapai ' + Math.round(ratio * 100) + '% dari pemasukan. Perhatikan anggaranmu.'
+        });
+      } else if (ratio < 0.3) {
+        insights.push({
+          type: 'positive',
+          message: 'Kamu berhasil menabung ' + Math.round((1 - ratio) * 100) + '% dari pemasukan!'
+        });
+      }
+    }
+    var activeGoals = getActiveGoals(goals);
+    if (activeGoals.length > 0) {
+      var closest = activeGoals.reduce(function(a, b) {
+        return calculateProgress(a) > calculateProgress(b) ? a : b;
+      });
+      if (closest && calculateProgress(closest) > 50) {
+        insights.push({
+          type: 'goal',
+          message: '🎯 Kamu tinggal ' + formatCurrency(closest.target - closest.saved) +
+            ' lagi untuk mencapai target "' + closest.name + '"'
+        });
+      }
+    }
+    if (insights.length === 0) {
+      insights.push({
+        type: 'info',
+        message: '📊 Mulai catat transaksimu untuk mendapatkan insight keuangan'
+      });
+    }
+    return insights.slice(0, 4);
+  }
+
   // ============================================================
-  // 3. STORAGE MANAGEMENT
+  // 3. STORAGE MANAGEMENT with Migration
   // ============================================================
 
   var STORAGE_KEY = 'neonvault_data_v2';
@@ -163,6 +287,48 @@
     };
   }
 
+  function migrateData(oldData) {
+    console.log('Migrating data from v1 to v2...');
+    var newData = getDefaultData();
+    if (oldData.settings) {
+      newData.settings.theme = oldData.settings.theme || 'dark';
+      newData.settings.userName = oldData.settings.userName || '';
+      newData.settings.onboardingComplete = oldData.settings.onboardingComplete || false;
+    }
+    if (oldData.goals && Array.isArray(oldData.goals)) {
+      newData.goals = oldData.goals.map(function(g) {
+        return {
+          id: g.id || generateId(),
+          name: g.name || 'Target',
+          icon: g.icon || '🎯',
+          color: g.color || '#00e5ff',
+          target: g.target || 0,
+          saved: g.saved || 0,
+          deadline: g.deadline || '',
+          note: g.note || '',
+          createdAt: g.createdAt || getCurrentDateTime(),
+          updatedAt: getCurrentDateTime()
+        };
+      });
+    }
+    if (oldData.transactions && Array.isArray(oldData.transactions)) {
+      newData.transactions = oldData.transactions.map(function(t) {
+        return {
+          id: t.id || generateId(),
+          type: t.type || 'income',
+          amount: t.amount || 0,
+          category: t.category || 'other',
+          desc: t.desc || t.description || '',
+          date: t.date || t.createdAt || getCurrentDateTime(),
+          goalId: t.goalId || ''
+        };
+      });
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+    console.log('Migration complete!');
+    return newData;
+  }
+
   function loadData() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
@@ -172,11 +338,16 @@
         return def;
       }
       var data = JSON.parse(raw);
+      // Migration if needed
+      if (data.version !== 2) {
+        data = migrateData(data);
+      }
       if (!data.settings) data.settings = getDefaultData().settings;
       if (!data.goals) data.goals = [];
       if (!data.transactions) data.transactions = [];
       return data;
     } catch (e) {
+      console.error('Load error:', e);
       var def = getDefaultData();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
       return def;
@@ -243,6 +414,8 @@
   var currentPage = 'dashboard';
   var transactionToUndo = null;
   var selectedColor = '#00e5ff';
+  var chartPeriod = 30;
+  var reminderInterval = null;
 
   // ============================================================
   // 5. DOM REFS
@@ -260,6 +433,7 @@
   var clockEl = document.getElementById('realTimeClock');
   var dateEl = document.getElementById('realTimeDate');
   var settingsToggle = document.getElementById('settingsToggle');
+  var bottomNav = document.getElementById('bottomNav');
 
   // ============================================================
   // 6. TOAST NOTIFICATION
@@ -272,13 +446,10 @@
     toast.innerHTML = '<span>' + message + '</span>' +
       (undoCallback ? '<button class="toast-undo" onclick="window._undoCallback && window._undoCallback()">UNDO</button>' :
         '');
-
     if (undoCallback) {
       window._undoCallback = undoCallback;
     }
-
     toastContainer.appendChild(toast);
-
     setTimeout(function() {
       toast.classList.add('removing');
       setTimeout(function() {
@@ -314,8 +485,9 @@
       '<div class="popup-glass">' +
       '<button class="modal-close" onclick="closeModal(\'transactionModal\')">✕</button>' +
       '<div class="popup-title">' + (titles[type] || titles.income) + '</div>' +
-      '<input type="number" id="modalAmount" placeholder="Nominal" min="1" step="1" />' +
-      '<select id="modalCategory">' +
+      '<select id="modalType" style="display:none;"><option value="' + type + '">' + type + '</option></select>' +
+      '<input type="number" id="modalAmount" placeholder="Nominal" min="1" step="1" aria-label="Nominal" />' +
+      '<select id="modalCategory" aria-label="Kategori">' +
       '<option value="food">🍔 Makanan</option>' +
       '<option value="transport">🚗 Transportasi</option>' +
       '<option value="shopping">🛒 Belanja</option>' +
@@ -327,15 +499,15 @@
       '<option value="savings">💰 Tabungan</option>' +
       '<option value="other">📦 Lainnya</option>' +
       '</select>' +
-      (type === 'saving' ? '<select id="modalGoal"><option value="">Pilih Target</option>' +
+      (type === 'saving' ? '<select id="modalGoal" aria-label="Target"><option value="">Pilih Target</option>' +
         appData.goals.filter(function(g) { return g.saved < g.target; }).map(function(g) {
           return '<option value="' + g.id + '">' + (g.icon || '🎯') + ' ' + sanitize(g.name) +
           '</option>';
         }).join('') + '</select>' : '') +
-      '<input type="text" id="modalDesc" placeholder="Catatan (opsional)" maxlength="100" />' +
+      '<input type="text" id="modalDesc" placeholder="Catatan (opsional)" maxlength="100" aria-label="Catatan" />' +
       '<div style="color:#88a0b8;margin-bottom:12px;font-size:0.85rem;">📅 ' + formatDateTime(
         getCurrentDateTime()) + '</div>' +
-      '<button class="neon-btn full" onclick="confirmTransaction(\'' + type + '\')">Simpan Transaksi</button>' +
+      '<button class="neon-btn full" onclick="confirmTransaction()">Simpan Transaksi</button>' +
       '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'transactionModal\')">Batal</button>' +
       '</div>';
 
@@ -346,13 +518,14 @@
     }, 100);
   }
 
-  function confirmTransaction(type) {
+  function confirmTransaction() {
     var amount = parseInt(document.getElementById('modalAmount').value);
     var category = document.getElementById('modalCategory').value;
     var desc = document.getElementById('modalDesc').value.trim();
     var goalId = document.getElementById('modalGoal')?.value || '';
+    var type = document.getElementById('modalType').value;
 
-    if (!amount || amount <= 0) {
+    if (!validateAmount(amount)) {
       showToast('Nominal harus lebih dari 0', 'error');
       return;
     }
@@ -394,12 +567,10 @@
 
     if (idx !== -1) {
       appData.transactions.splice(idx, 1);
-
       if (tx.type === 'saving' && tx.goalId) {
         var goal = appData.goals.find(function(g) { return g.id === tx.goalId; });
         if (goal) goal.saved -= tx.amount;
       }
-
       saveData(appData);
       transactionToUndo = null;
       showToast('Transaksi dibatalkan', 'warning');
@@ -423,12 +594,13 @@
       '<button class="modal-close" onclick="closeModal(\'goalModal\')">✕</button>' +
       '<div class="popup-title">' + (isEdit ? '✏️ Edit Target' : '🎯 Target Baru') + '</div>' +
       '<input type="text" id="goalName" placeholder="Nama Target" value="' + (goal ? sanitize(goal.name) : '') +
-      '" maxlength="50" />' +
+      '" maxlength="50" aria-label="Nama Target" />' +
       '<input type="number" id="goalTarget" placeholder="Target Nominal" value="' + (goal ? goal.target : '') +
-      '" min="1" step="1" />' +
-      '<input type="date" id="goalDeadline" value="' + (goal ? goal.deadline || '' : '') + '" />' +
+      '" min="1" step="1" aria-label="Target Nominal" />' +
+      '<input type="date" id="goalDeadline" value="' + (goal ? goal.deadline || '' : '') +
+      '" aria-label="Deadline" />' +
       '<input type="text" id="goalNote" placeholder="Catatan (opsional)" value="' + (goal ? sanitize(goal.note) :
-        '') + '" maxlength="100" />' +
+        '') + '" maxlength="100" aria-label="Catatan" />' +
       '<div style="margin:8px 0 12px;text-align:left;">' +
       '<label style="color:#88a0b8;font-size:0.85rem;display:block;margin-bottom:6px;">Warna Target</label>' +
       '<div class="color-options">' +
@@ -464,11 +636,11 @@
     var deadline = document.getElementById('goalDeadline').value;
     var note = document.getElementById('goalNote').value.trim();
 
-    if (!name) {
-      showToast('Masukkan nama target', 'error');
+    if (!validateName(name)) {
+      showToast('Masukkan nama target (1-50 karakter)', 'error');
       return;
     }
-    if (!target || target <= 0) {
+    if (!validateAmount(target)) {
       showToast('Target nominal harus lebih dari 0', 'error');
       return;
     }
@@ -526,8 +698,8 @@
       '<div class="popup-title">💰 Tambah Tabungan</div>' +
       '<p style="color:#b0c4de;margin-bottom:12px;font-weight:600;">Target: ' + (goal.icon || '🎯') + ' ' +
       sanitize(goal.name) + '</p>' +
-      '<input type="number" id="goalAddAmount" placeholder="Nominal tambahan" min="1" step="1" />' +
-      '<input type="text" id="goalAddNote" placeholder="Catatan (opsional)" maxlength="100" />' +
+      '<input type="number" id="goalAddAmount" placeholder="Nominal tambahan" min="1" step="1" aria-label="Nominal" />' +
+      '<input type="text" id="goalAddNote" placeholder="Catatan (opsional)" maxlength="100" aria-label="Catatan" />' +
       '<button class="neon-btn full" onclick="confirmGoalAdd(\'' + goalId + '\')">Tambahkan</button>' +
       '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'goalAddModal\')">Batal</button>' +
       '</div>';
@@ -543,7 +715,7 @@
     var amount = parseInt(document.getElementById('goalAddAmount').value);
     var note = document.getElementById('goalAddNote').value.trim();
 
-    if (!amount || amount <= 0) {
+    if (!validateAmount(amount)) {
       showToast('Nominal harus lebih dari 0', 'error');
       return;
     }
@@ -624,16 +796,23 @@
       '</div><div class="stat-label">Aktif</div></div>';
     html += '</div>';
 
+    // Data Warning
+    html += '<div class="data-warning">';
+    html += '<span class="warning-icon">🔒</span>';
+    html +=
+      '<span>Data tersimpan secara lokal di perangkat ini. Jika browser atau data situs dihapus, data tabungan dapat ikut terhapus. <strong>Download backup</strong> secara rutin.</span>';
+    html += '</div>';
+
     // Goals Section
     html += '<div class="glass">';
     html += '<div class="section-header"><div class="section-title">🎯 Target Tabungan</div>' +
-      '<button class="section-link" onclick="showGoals()">Lihat Semua →</button></div>';
+      '<button class="section-link" onclick="navigateTo(\'goals\')">Lihat Semua →</button></div>';
 
     if (activeGoals.length > 0) {
       activeGoals.forEach(function(g) {
         var progress = calculateProgress(g);
         var isCompleted = g.saved >= g.target;
-        html += '<div class="goal-item" onclick="showGoals()" style="border-color:' + (g.color ||
+        html += '<div class="goal-item" onclick="navigateTo(\'goals\')" style="border-color:' + (g.color ||
           '#00e5ff') + ';">';
         html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
           .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
@@ -656,7 +835,7 @@
     // Recent Transactions
     html += '<div class="glass">';
     html += '<div class="section-header"><div class="section-title">📊 Transaksi Terbaru</div>' +
-      '<button class="section-link" onclick="showTransactions()">Lihat Semua →</button></div>';
+      '<button class="section-link" onclick="navigateTo(\'transactions\')">Lihat Semua →</button></div>';
 
     if (recentTxs.length > 0) {
       recentTxs.forEach(function(t) {
@@ -670,7 +849,7 @@
         html += '<div class="transaction-item">';
         html += '<span class="tx-icon">' + icon + '</span>';
         html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
-          '</div><div class="tx-meta">' + formatDate(t.date) + ' · ' + catName + '</div></div>';
+          '</div><div class="tx-meta">' + catName + ' · ' + formatDate(t.date) + '</div></div>';
         html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
           '</div>';
         html += '</div>';
@@ -686,7 +865,16 @@
     mainContent.innerHTML = html;
   }
 
-  function showGoals() {
+  function navigateTo(page) {
+    currentPage = page;
+    // Update bottom nav
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.classList.toggle('active', item.dataset.page === page);
+    });
+    renderCurrentPage();
+  }
+
+  function renderGoals() {
     currentPage = 'goals';
     var data = appData;
     var goals = data.goals || [];
@@ -751,7 +939,7 @@
     mainContent.innerHTML = html;
   }
 
-  function showTransactions() {
+  function renderTransactions() {
     currentPage = 'transactions';
     var data = appData;
     var txs = data.transactions || [];
@@ -767,7 +955,7 @@
     html += '</div>';
     html += '<div style="margin-top:12px;">';
     html +=
-      '<input type="text" id="txSearch" placeholder="Cari transaksi..." oninput="filterTransactions()" style="width:100%;padding:10px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,229,255,0.15);color:inherit;outline:none;font-family:Rajdhani,sans-serif;font-size:0.9rem;" />';
+      '<input type="text" id="txSearch" placeholder="Cari transaksi..." oninput="filterTransactions()" style="width:100%;padding:10px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,229,255,0.15);color:inherit;outline:none;font-family:Rajdhani,sans-serif;font-size:0.9rem;" aria-label="Cari transaksi" />';
     html += '</div>';
     html += '</div>';
 
@@ -786,10 +974,13 @@
         var catName = getCategoryName(t.category);
         var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
         var sign = isIncome ? '+' : (isExpense ? '-' : '');
+        var goalName = t.goalId ? (appData.goals.find(function(g) { return g.id === t.goalId; })?.name || '') :
+        '';
         html += '<div class="transaction-item" style="padding:12px 16px;">';
         html += '<span class="tx-icon">' + icon + '</span>';
         html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
-          '</div><div class="tx-meta">' + catName + ' · ' + formatDateTime(t.date) + '</div></div>';
+          '</div><div class="tx-meta">' + catName + (goalName ? ' → ' + goalName : '') + ' · ' + formatDateTime(
+          t.date) + '</div></div>';
         html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
           '</div>';
         html += '</div>';
@@ -809,60 +1000,449 @@
     });
   }
 
-  function renderCurrentPage() {
-    switch (currentPage) {
-      case 'dashboard':
-        renderDashboard();
-        break;
-      case 'goals':
-        showGoals();
-        break;
-      case 'transactions':
-        showTransactions();
-        break;
-      default:
-        renderDashboard();
-    }
+  // ============================================================
+  // 10. ANALYTICS FUNCTIONS
+  // ============================================================
+
+  function renderAnalytics() {
+    currentPage = 'analytics';
+    var data = appData;
+    var txs = data.transactions || [];
+    var goals = data.goals || [];
+
+    var totalInc = getTotalIncome(txs);
+    var totalExp = getTotalExpense(txs);
+    var totalSav = getTotalSaving(txs);
+    var totalGoalSavings = getTotalGoalSavings(goals);
+    var dailyAvg = getDailyAverage(txs, 30);
+    var monthlyAvg = dailyAvg * 30;
+    var savingRate = getSavingRate(txs, 30);
+    var insights = generateInsights(txs, goals);
+
+    var monthlyData = getMonthlyTrend(txs, chartPeriod / 30 || 6);
+    var categoryData = getCategoryBreakdown(txs, 'expense');
+
+    var balanceData = monthlyData.map(function(d) {
+      return { label: d.month, value: d.balance };
+    });
+    var incomeData = monthlyData.map(function(d) {
+      return { label: d.month, value: d.income };
+    });
+    var expenseData = monthlyData.map(function(d) {
+      return { label: d.month, value: d.expense };
+    });
+    var pieData = categoryData.map(function(d) {
+      return { label: d.name, value: d.amount, color: d.percentage > 10 ? '#00e5ff' : '#7c4dff' };
+    });
+
+    var periodOptions = [
+      { label: '7 Hari', days: 7 },
+      { label: '30 Hari', days: 30 },
+      { label: '90 Hari', days: 90 },
+      { label: '365 Hari', days: 365 }
+    ];
+
+    var html = '';
+    html += '<div class="page-container active">';
+    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Financial Analytics</div>';
+
+    // Stats
+    html +=
+      '<div class="analytics-insights" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
+    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(totalSav +
+      totalGoalSavings) + '</div><div class="insight-label">Total Tabungan</div></div>';
+    html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(monthlyAvg) +
+      '</div><div class="insight-label">Rata-rata / Bulan</div></div>';
+    html += '<div class="insight-card glass"><div class="insight-value">' + getActiveGoals(goals).length +
+      '</div><div class="insight-label">Target Aktif</div></div>';
+    html += '<div class="insight-card glass"><div class="insight-value">' + getCompletedGoals(goals).length +
+      '</div><div class="insight-label">Target Tercapai</div></div>';
+    html += '</div>';
+
+    // Period filter
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html +=
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
+    html += '<span style="font-weight:600;">📊 Perkembangan Saldo</span>';
+    html += '<div class="period-filters">';
+    periodOptions.forEach(function(p) {
+      html += '<button class="period-btn ' + (p.days === chartPeriod ? 'active' : '') +
+        '" onclick="setChartPeriod(' + p.days + ')">' + p.label + '</button>';
+    });
+    html += '</div></div>';
+    html += '<div class="analytics-chart"><canvas id="balanceChart"></canvas></div>';
+    html += '</div>';
+
+    // Income vs Expense
+    html += '<div class="analytics-grid" style="margin-bottom:16px;">';
+    html += '<div class="glass full-width">';
+    html += '<div style="font-weight:600;margin-bottom:8px;">📊 Pemasukan vs Pengeluaran</div>';
+    html += '<div class="analytics-chart" style="height:150px;"><canvas id="incomeExpenseChart"></canvas></div>';
+    html += '</div></div>';
+
+    // Categories & Insights
+    html += '<div class="analytics-grid">';
+    html += '<div class="glass"><div style="font-weight:600;margin-bottom:8px;">📊 Kategori Pengeluaran</div>';
+    html += '<div class="analytics-chart" style="height:180px;"><canvas id="categoryChart"></canvas></div></div>';
+    html += '<div class="glass"><div style="font-weight:600;margin-bottom:8px;">💡 Insight Keuangan</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    insights.forEach(function(i) {
+      html += '<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:12px;border-left:3px solid ' +
+        (i.type === 'warning' ? '#ff4d6d' : i.type === 'positive' ? '#00ff88' : '#00e5ff') + ';">';
+      html += '<span style="font-size:0.85rem;">' + i.message + '</span></div>';
+    });
+    html += '</div></div></div>';
+    html += '</div>';
+
+    mainContent.innerHTML = html;
+
+    // Render charts after DOM update
+    setTimeout(function() {
+      drawLineChart('balanceChart', balanceData);
+      drawBarChart('incomeExpenseChart', incomeData, expenseData);
+      drawDoughnutChart('categoryChart', pieData);
+    }, 100);
+  }
+
+  function setChartPeriod(days) {
+    chartPeriod = days;
+    renderAnalytics();
   }
 
   // ============================================================
-  // 10. SETTINGS FUNCTIONS
+  // 11. CHART FUNCTIONS
   // ============================================================
 
-  function openSettings() {
-    var modal = document.createElement('div');
-    modal.className = 'popup-overlay active';
-    modal.id = 'settingsModal';
-    modal.innerHTML =
-      '<div class="popup-glass" style="text-align:left;">' +
-      '<button class="modal-close" onclick="closeModal(\'settingsModal\')">✕</button>' +
-      '<div class="popup-title" style="text-align:center;">⚙️ Pengaturan</div>' +
-      '<div style="margin:16px 0;">' +
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tampilan</h4>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      '<button class="neon-btn small" onclick="setTheme(\'dark\')">🌙 Dark</button>' +
-      '<button class="neon-btn small" onclick="setTheme(\'light\')">☀️ Light</button>' +
-      '<button class="neon-btn small" onclick="setTheme(\'system\')">🖥️ System</button>' +
-      '</div>' +
-      '</div>' +
-      '<div style="margin:16px 0;">' +
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Data</h4>' +
-      '<button class="neon-btn small" onclick="downloadBackup()" style="width:100%;margin-bottom:8px;">📥 Download Backup</button>' +
-      '<button class="neon-btn small" onclick="document.getElementById(\'restoreInput\').click()" style="width:100%;margin-bottom:8px;">📤 Restore Backup</button>' +
-      '<input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreBackup(this)" />' +
-      '<button class="neon-btn danger small" onclick="openResetModal()" style="width:100%;">🗑️ Reset Semua Data</button>' +
-      '</div>' +
-      '<div style="margin:16px 0;">' +
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>' +
-      '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.0</p>' +
-      '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>' +
-      '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>' +
-      '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>' +
-      '</div>' +
-      '<button class="neon-btn small" style="width:100%;margin-top:8px;" onclick="closeModal(\'settingsModal\')">Tutup</button>' +
-      '</div>';
+  function drawLineChart(canvasId, data) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    document.body.appendChild(modal);
+    var rect = canvas.parentElement?.getBoundingClientRect();
+    var W = rect?.width || canvas.clientWidth || 400;
+    var H = rect?.height || 200;
+
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    var pad = { top: 20, right: 16, bottom: 28, left: 16 };
+    var chartW = W - pad.left - pad.right;
+    var chartH = H - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!data || data.length === 0) {
+      ctx.fillStyle = '#88a0b8';
+      ctx.font = '14px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText('Belum ada data', W / 2, H / 2);
+      return;
+    }
+
+    var values = data.map(function(d) { return d.value; });
+    var labels = data.map(function(d) { return d.label; });
+    var maxVal = Math.max(1, Math.max.apply(null, values.map(Math.abs)));
+    var minVal = Math.min(0, Math.min.apply(null, values));
+    var range = maxVal - minVal || 1;
+
+    var isDark = !document.body.classList.contains('light-mode');
+    var colors = {
+      line: isDark ? '#00e5ff' : '#7c4dff',
+      fill: isDark ? 'rgba(0,229,255,0.05)' : 'rgba(124,77,255,0.05)',
+      grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+      text: isDark ? '#88a0b8' : '#6a6a8e',
+      point: isDark ? '#00e5ff' : '#7c4dff'
+    };
+
+    // Grid
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 0.5;
+    for (var g = 0; g <= 4; g++) {
+      var y = pad.top + (chartH / 4) * g;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(W - pad.right, y);
+      ctx.stroke();
+    }
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = colors.line;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = colors.line + '66';
+    ctx.shadowBlur = 10;
+    for (var i = 0; i < values.length; i++) {
+      var x = pad.left + (i / (values.length - 1 || 1)) * chartW;
+      var y = pad.top + chartH - ((values[i] - minVal) / range) * chartH;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Points
+    for (var p = 0; p < values.length; p++) {
+      var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
+      var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
+
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = colors.point;
+      ctx.shadowColor = colors.point + '88';
+      ctx.shadowBlur = 15;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = colors.text;
+      ctx.font = '8px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[p], px, H - 4);
+    }
+  }
+
+  function drawBarChart(canvasId, incomeData, expenseData) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    var rect = canvas.parentElement?.getBoundingClientRect();
+    var W = rect?.width || canvas.clientWidth || 400;
+    var H = rect?.height || 150;
+
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    var pad = { top: 20, right: 16, bottom: 28, left: 16 };
+    var chartW = W - pad.left - pad.right;
+    var chartH = H - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!incomeData || incomeData.length === 0) {
+      ctx.fillStyle = '#88a0b8';
+      ctx.font = '14px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText('Belum ada data', W / 2, H / 2);
+      return;
+    }
+
+    var allValues = incomeData.map(function(d) { return d.value; }).concat(expenseData.map(function(d) { return -d
+        .value; }));
+    var maxVal = Math.max(1, Math.max.apply(null, allValues.map(Math.abs)));
+
+    var isDark = !document.body.classList.contains('light-mode');
+    var colors = {
+      income: isDark ? '#00ff88' : '#00a86b',
+      expense: isDark ? '#ff4d6d' : '#e74c3c',
+      grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+      text: isDark ? '#88a0b8' : '#6a6a8e'
+    };
+
+    var barWidth = Math.min(30, (chartW / incomeData.length) * 0.35);
+    var gap = (chartW - barWidth * 2 * incomeData.length) / (incomeData.length + 1);
+
+    // Grid
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 0.5;
+    for (var g = 0; g <= 4; g++) {
+      var y = pad.top + (chartH / 4) * g;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(W - pad.right, y);
+      ctx.stroke();
+    }
+
+    incomeData.forEach(function(d, i) {
+      var x1 = pad.left + gap + i * (barWidth * 2 + gap);
+      var h1 = (d.value / maxVal) * chartH;
+      var y1 = pad.top + chartH - h1;
+
+      ctx.fillStyle = colors.income;
+      ctx.shadowColor = colors.income + '44';
+      ctx.shadowBlur = 8;
+      ctx.fillRect(x1, y1, barWidth, h1);
+      ctx.shadowBlur = 0;
+
+      var x2 = x1 + barWidth;
+      var h2 = (expenseData[i]?.value / maxVal) * chartH || 0;
+      var y2 = pad.top + chartH - h2;
+
+      ctx.fillStyle = colors.expense;
+      ctx.shadowColor = colors.expense + '44';
+      ctx.shadowBlur = 8;
+      ctx.fillRect(x2, y2, barWidth, h2);
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = colors.text;
+      ctx.font = '7px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.label, x1 + barWidth, H - 4);
+    });
+  }
+
+  function drawDoughnutChart(canvasId, data) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    var rect = canvas.parentElement?.getBoundingClientRect();
+    var size = Math.min(rect?.width || 200, 200);
+    var W = size;
+    var H = size;
+
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!data || data.length === 0) {
+      ctx.fillStyle = '#88a0b8';
+      ctx.font = '14px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText('Belum ada data', W / 2, H / 2);
+      return;
+    }
+
+    var total = data.reduce(function(s, d) { return s + d.value; }, 0);
+    if (total === 0) {
+      ctx.fillStyle = '#88a0b8';
+      ctx.font = '14px Rajdhani';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tidak ada data', W / 2, H / 2);
+      return;
+    }
+
+    var colors = ['#00e5ff', '#7c4dff', '#00ff88', '#ff6b6b', '#ffd93d', '#6bcbff', '#ff8a5c', '#a8e6cf'];
+    var cx = W / 2;
+    var cy = H / 2;
+    var radius = Math.min(W, H) / 2 - 20;
+    var innerRadius = radius * 0.55;
+    var startAngle = -Math.PI / 2;
+
+    data.forEach(function(item, i) {
+      var sliceAngle = (item.value / total) * 2 * Math.PI;
+      var color = item.color || colors[i % colors.length];
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+      ctx.arc(cx, cy, innerRadius, startAngle + sliceAngle, startAngle, true);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.shadowColor = color + '44';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if (sliceAngle > 0.25) {
+        var midAngle = startAngle + sliceAngle / 2;
+        var labelRadius = (radius + innerRadius) / 2;
+        var lx = cx + Math.cos(midAngle) * labelRadius;
+        var ly = cy + Math.sin(midAngle) * labelRadius;
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px Rajdhani';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        var percent = Math.round((item.value / total) * 100);
+        if (percent >= 10) {
+          ctx.fillText(percent + '%', lx, ly);
+        }
+      }
+
+      startAngle += sliceAngle;
+    });
+
+    ctx.fillStyle = '#e0f0ff';
+    ctx.font = 'bold 12px Rajdhani';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Total', cx, cy - 8);
+    ctx.fillStyle = '#00e5ff';
+    ctx.font = 'bold 10px Orbitron';
+    ctx.fillText(formatCurrency(total), cx, cy + 16);
+  }
+
+  // ============================================================
+  // 12. SETTINGS FUNCTIONS
+  // ============================================================
+
+  function renderSettings() {
+    currentPage = 'settings';
+    var settings = appData.settings || {};
+
+    var html = '';
+    html += '<div class="page-container active">';
+    html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">⚙️ Pengaturan</div>';
+
+    // Theme
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tampilan</h4>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    html += '<button class="neon-btn small ' + (settings.theme === 'dark' ? 'active' : '') +
+      '" onclick="setTheme(\'dark\')">🌙 Dark</button>';
+    html += '<button class="neon-btn small ' + (settings.theme === 'light' ? 'active' : '') +
+      '" onclick="setTheme(\'light\')">☀️ Light</button>';
+    html += '<button class="neon-btn small ' + (settings.theme === 'system' ? 'active' : '') +
+      '" onclick="setTheme(\'system\')">🖥️ System</button>';
+    html += '</div></div>';
+
+    // Reminder
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Notifikasi</h4>';
+    html += '<div style="display:flex;align-items:center;gap:12px;">';
+    html += '<label class="toggle-switch" style="display:flex;align-items:center;cursor:pointer;">';
+    html += '<input type="checkbox" id="reminderToggle" ' + (settings.reminders ? 'checked' : '') +
+      ' onchange="toggleReminder(this.checked)" style="display:none;" />';
+    html +=
+      '<span class="toggle-slider" style="width:44px;height:24px;background:rgba(255,255,255,0.1);border-radius:12px;position:relative;transition:0.3s;flex-shrink:0;"></span>';
+    html += '<span style="margin-left:10px;">Aktifkan Pengingat Menabung</span>';
+    html += '</label></div></div>';
+
+    // Data
+    html += '<div class="glass" style="margin-bottom:12px;">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Data</h4>';
+    html +=
+      '<div style="display:flex;flex-direction:column;gap:8px;">';
+    html +=
+      '<button class="neon-btn small" onclick="downloadBackup()" style="width:100%;text-align:center;">📥 Download Backup</button>';
+    html +=
+      '<button class="neon-btn small" onclick="document.getElementById(\'restoreInput\').click()" style="width:100%;text-align:center;">📤 Restore Backup</button>';
+    html +=
+      '<input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreBackup(this)" />';
+    html +=
+      '<button class="neon-btn danger small" onclick="openResetModal()" style="width:100%;text-align:center;">🗑️ Reset Semua Data</button>';
+    html += '</div></div>';
+
+    // Data Warning
+    html += '<div class="data-warning" style="margin-bottom:12px;">';
+    html += '<span class="warning-icon">🔒</span>';
+    html +=
+      '<span>Data tersimpan secara lokal di perangkat ini. <strong>Download backup</strong> secara rutin untuk menghindari kehilangan data.</span>';
+    html += '</div>';
+
+    // About
+    html += '<div class="glass">';
+    html +=
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.0</p>';
+    html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
+    html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
+    html +=
+      '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>';
+    html += '</div></div>';
+
+    mainContent.innerHTML = html;
   }
 
   function setTheme(theme) {
@@ -870,13 +1450,66 @@
     saveData(appData);
     applyTheme(theme);
     showToast('Tema: ' + theme, 'success');
-    closeModal('settingsModal');
+    renderCurrentPage();
   }
 
   function applyTheme(theme) {
     var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia(
     '(prefers-color-scheme: dark)').matches);
     document.body.classList.toggle('light-mode', !isDark);
+    // Update toggle styles
+    document.querySelectorAll('.settings-row .neon-btn').forEach(function(btn) {
+      var text = btn.textContent.trim();
+      btn.classList.toggle('active', text.includes(theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' :
+      'System'));
+    });
+  }
+
+  function toggleReminder(enabled) {
+    appData.settings.reminders = enabled;
+    saveData(appData);
+    if (enabled) {
+      startReminders();
+      showToast('🔔 Pengingat diaktifkan', 'success');
+    } else {
+      stopReminders();
+      showToast('🔕 Pengingat dinonaktifkan', 'success');
+    }
+  }
+
+  function startReminders() {
+    stopReminders();
+    reminderInterval = setInterval(function() {
+      checkReminders();
+    }, 60000);
+    checkReminders();
+  }
+
+  function stopReminders() {
+    if (reminderInterval) {
+      clearInterval(reminderInterval);
+      reminderInterval = null;
+    }
+  }
+
+  function checkReminders() {
+    if (!appData.settings.reminders) return;
+    var activeGoals = getActiveGoals(appData.goals);
+    var closeGoals = activeGoals.filter(function(g) { return calculateProgress(g) >= 80; });
+    closeGoals.forEach(function(goal) {
+      showToast('🎯 Kamu tinggal ' + formatCurrency(goal.target - goal.saved) +
+        ' lagi untuk mencapai target "' + goal.name + '"', 'warning');
+    });
+    var today = getToday();
+    var todayTxs = appData.transactions.filter(function(t) { return t.date.startsWith(today); });
+    var hasSaving = todayTxs.some(function(t) { return t.type === 'saving'; });
+    if (!hasSaving && appData.goals.length > 0) {
+      var lastReminder = localStorage.getItem('neonvault_last_reminder');
+      if (lastReminder !== today) {
+        localStorage.setItem('neonvault_last_reminder', today);
+        showToast('💰 Jangan lupa menabung hari ini!', 'info');
+      }
+    }
   }
 
   function downloadBackup() {
@@ -904,7 +1537,6 @@
   function restoreBackup(input) {
     var file = input.files[0];
     if (!file) return;
-
     var reader = new FileReader();
     reader.onload = function(e) {
       try {
@@ -934,7 +1566,7 @@
       '<div class="popup-title">⚠️ RESET NEONVAULT</div>' +
       '<p style="color:#ff6b6b;font-weight:500;margin:8px 0;">Semua transaksi, saldo dan target akan dihapus.</p>' +
       '<p style="margin:12px 0 8px;color:#b0c4de;">Ketik <strong>HAPUS</strong> untuk konfirmasi:</p>' +
-      '<input type="text" id="resetConfirm" placeholder="Ketik HAPUS" maxlength="10" style="text-transform:uppercase;" oninput="document.getElementById(\'resetBtn\').disabled = this.value !== \'HAPUS\'" />' +
+      '<input type="text" id="resetConfirm" placeholder="Ketik HAPUS" maxlength="10" style="text-transform:uppercase;" oninput="document.getElementById(\'resetBtn\').disabled = this.value !== \'HAPUS\'" aria-label="Konfirmasi reset" />' +
       '<button id="resetBtn" class="neon-btn danger full" disabled onclick="confirmReset()">Hapus Semua Data</button>' +
       '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'resetModal\')">Batal</button>' +
       '</div>';
@@ -947,9 +1579,7 @@
   }
 
   function confirmReset() {
-    // Create backup before reset
     downloadBackup();
-
     var newData = resetAllData();
     if (newData) {
       appData = newData;
@@ -958,6 +1588,28 @@
       showToast('🗑️ Semua data telah direset', 'warning');
     } else {
       showToast('Gagal reset data', 'error');
+    }
+  }
+
+  function renderCurrentPage() {
+    switch (currentPage) {
+      case 'dashboard':
+        renderDashboard();
+        break;
+      case 'goals':
+        renderGoals();
+        break;
+      case 'transactions':
+        renderTransactions();
+        break;
+      case 'analytics':
+        renderAnalytics();
+        break;
+      case 'settings':
+        renderSettings();
+        break;
+      default:
+        renderDashboard();
     }
   }
 
@@ -982,7 +1634,23 @@
   }
 
   // ============================================================
-  // 11. EXPOSE GLOBALLY
+  // 13. NAVIGATION
+  // ============================================================
+
+  function setupNavigation() {
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var page = this.dataset.page;
+        navigateTo(page);
+      });
+    });
+
+    // Handle manual page navigation from buttons
+    window.navigateTo = navigateTo;
+  }
+
+  // ============================================================
+  // 14. EXPOSE GLOBALLY
   // ============================================================
 
   window.openTransactionModal = openTransactionModal;
@@ -995,8 +1663,6 @@
   window.confirmGoalAdd = confirmGoalAdd;
   window.closeModal = closeModal;
   window.showToast = showToast;
-  window.showGoals = showGoals;
-  window.showTransactions = showTransactions;
   window.filterTransactions = filterTransactions;
   window.selectColor = selectColor;
   window.setTheme = setTheme;
@@ -1004,21 +1670,19 @@
   window.restoreBackup = restoreBackup;
   window.openResetModal = openResetModal;
   window.confirmReset = confirmReset;
-  window.openSettings = openSettings;
+  window.navigateTo = navigateTo;
+  window.toggleReminder = toggleReminder;
+  window.setChartPeriod = setChartPeriod;
 
   // ============================================================
-  // 12. INITIALIZATION
+  // 15. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
-      // Load data
       appData = loadData();
-
-      // Apply theme
       applyTheme(appData.settings.theme || 'dark');
 
-      // Check onboarding
       if (!appData.settings.onboardingComplete) {
         onboarding.classList.add('active');
         loadingScreen.classList.add('hidden');
@@ -1035,9 +1699,12 @@
         dashboard.classList.add('active');
         loadingScreen.classList.add('hidden');
         renderDashboard();
+        // Start reminders
+        if (appData.settings.reminders) {
+          startReminders();
+        }
       }
 
-      // Onboarding start
       onboardingStart.addEventListener('click', function() {
         appData.settings.onboardingComplete = true;
         saveData(appData);
@@ -1048,7 +1715,6 @@
         }, 100);
       });
 
-      // Name popup start
       startBtn.addEventListener('click', function() {
         var name = nameInput.value.trim();
         if (!name) {
@@ -1061,6 +1727,9 @@
         namePopup.classList.remove('active');
         dashboard.classList.add('active');
         renderDashboard();
+        if (appData.settings.reminders) {
+          startReminders();
+        }
         showToast('Selamat datang, ' + name + '! ✦', 'success');
       });
 
@@ -1070,14 +1739,17 @@
         }
       });
 
-      // Settings toggle
-      settingsToggle.addEventListener('click', openSettings);
+      settingsToggle.addEventListener('click', function() {
+        navigateTo('settings');
+      });
 
-      // Clock
       updateClock();
       setInterval(updateClock, 1000);
 
+      setupNavigation();
+
       console.log('🚀 NEONVAULT V2 initialized successfully!');
+      console.log('📊 Data:', appData);
 
     } catch (e) {
       console.error('Init error:', e);
@@ -1086,7 +1758,6 @@
     }
   }
 
-  // Start when DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
