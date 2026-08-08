@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2.0.2 - Fixed Navigation & State
+ * app.js – NEONVAULT V2.0.2 - STABILIZED
  * ============================================================
  */
 
@@ -8,29 +8,30 @@
   'use strict';
 
   // ============================================================
-  // 1. APP MODES
+  // 1. APP CONSTANTS & STATE
   // ============================================================
 
-  var APP_MODES = {
+  var MODE = {
     ONBOARDING: 'onboarding',
     APP: 'app'
   };
 
-  // ============================================================
-  // 2. APP STATE
-  // ============================================================
-
+  // SINGLE SOURCE OF TRUTH
   var appState = {
-    mode: APP_MODES.ONBOARDING,
-    currentView: 'onboarding', // onboarding, rules, about, dashboard, goals, transactions, analytics, settings
-    currentGoalId: null,
-    pageHistory: [],
-    isOnboardingMenuOpen: false,
-    isAppMenuOpen: false
+    mode: MODE.ONBOARDING,
+    view: 'onboarding', // onboarding, rules, about, dashboard, goals, transactions, analytics, settings, goalDetail
+    goalId: null
   };
 
   // ============================================================
-  // 3. DATA STATE
+  // 2. STORAGE KEYS
+  // ============================================================
+
+  var STORAGE_KEY = 'neonvault_data_v2';
+  var NOTIFICATION_KEY = 'neonvault_notifications';
+
+  // ============================================================
+  // 3. DATA
   // ============================================================
 
   var appData = null;
@@ -41,15 +42,7 @@
   var notificationEnabled = false;
 
   // ============================================================
-  // 4. STORAGE KEYS
-  // ============================================================
-
-  var STORAGE_KEY = 'neonvault_data_v2';
-  var NOTIFICATION_KEY = 'neonvault_notifications';
-  var ONBOARDING_KEY = 'neonvault_onboarding';
-
-  // ============================================================
-  // 5. DOM REFS
+  // 4. DOM REFS
   // ============================================================
 
   var loadingScreen = document.getElementById('loadingScreen');
@@ -71,7 +64,7 @@
   var toastContainer = document.getElementById('toastContainer');
 
   // ============================================================
-  // 6. HELPERS & UTILITIES
+  // 5. HELPERS (Minimal)
   // ============================================================
 
   function generateId() {
@@ -155,7 +148,7 @@
   }
 
   // ============================================================
-  // 7. FINANCE CALCULATIONS
+  // 6. FINANCE FUNCTIONS (Minimal)
   // ============================================================
 
   function getTotalIncome(txs) {
@@ -361,7 +354,7 @@
   }
 
   // ============================================================
-  // 8. STORAGE MANAGEMENT
+  // 7. STORAGE
   // ============================================================
 
   function getDefaultData() {
@@ -379,49 +372,6 @@
     };
   }
 
-  function migrateData(oldData) {
-    console.log('Migrating data from v1 to v2...');
-    var newData = getDefaultData();
-    if (oldData.settings) {
-      newData.settings.theme = oldData.settings.theme || 'dark';
-      newData.settings.userName = oldData.settings.userName || '';
-      newData.settings.onboardingComplete = oldData.settings.onboardingComplete || false;
-      newData.settings.reminders = oldData.settings.reminders || false;
-    }
-    if (oldData.goals && Array.isArray(oldData.goals)) {
-      newData.goals = oldData.goals.map(function(g) {
-        return {
-          id: g.id || generateId(),
-          name: g.name || 'Target',
-          icon: g.icon || '🎯',
-          color: g.color || '#00e5ff',
-          target: g.target || 0,
-          saved: g.saved || 0,
-          deadline: g.deadline || '',
-          note: g.note || '',
-          createdAt: g.createdAt || getCurrentDateTime(),
-          updatedAt: getCurrentDateTime()
-        };
-      });
-    }
-    if (oldData.transactions && Array.isArray(oldData.transactions)) {
-      newData.transactions = oldData.transactions.map(function(t) {
-        return {
-          id: t.id || generateId(),
-          type: t.type || 'income',
-          amount: t.amount || 0,
-          category: t.category || 'other',
-          desc: t.desc || t.description || '',
-          date: t.date || t.createdAt || getCurrentDateTime(),
-          goalId: t.goalId || ''
-        };
-      });
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-    console.log('Migration complete!');
-    return newData;
-  }
-
   function loadData() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
@@ -431,9 +381,6 @@
         return def;
       }
       var data = JSON.parse(raw);
-      if (data.version !== 2) {
-        data = migrateData(data);
-      }
       if (!data.settings) data.settings = getDefaultData().settings;
       if (!data.goals) data.goals = [];
       if (!data.transactions) data.transactions = [];
@@ -459,44 +406,32 @@
   }
 
   // ============================================================
-  // 9. RESET FUNCTION - FIXED
+  // 8. RESET - FIXED (Minimal)
   // ============================================================
 
   function resetAllData() {
     try {
-      // 1. Clear storage
+      // 1. Hapus data pengguna (bukan semua localStorage)
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NOTIFICATION_KEY);
-      localStorage.removeItem(ONBOARDING_KEY);
       localStorage.removeItem('neonvault_last_reminder');
       
-      var keys = Object.keys(localStorage);
-      keys.forEach(function(key) {
-        if (key.startsWith('neonvault_data_v2_backup_')) {
-          localStorage.removeItem(key);
-        }
-      });
-
-      // 2. Reset memory state
+      // 2. Reset state memory
       appData = getDefaultData();
       appData.settings.onboardingComplete = false;
       appData.settings.reminders = false;
       
-      // 3. Reset navigation state
-      appState.mode = APP_MODES.ONBOARDING;
-      appState.currentView = 'onboarding';
-      appState.currentGoalId = null;
-      appState.pageHistory = [];
-      appState.isOnboardingMenuOpen = false;
-      appState.isAppMenuOpen = false;
+      // 3. Reset app state
+      appState.mode = MODE.ONBOARDING;
+      appState.view = 'onboarding';
+      appState.goalId = null;
       
-      transactionToUndo = null;
       notificationEnabled = false;
-
-      // 4. Reset browser history
+      
+      // 4. Reset history (tanpa pushState baru)
       try {
         history.replaceState(
-          { mode: APP_MODES.ONBOARDING, view: 'onboarding' },
+          { mode: MODE.ONBOARDING, view: 'onboarding' },
           'NEONVAULT - Onboarding',
           window.location.pathname + window.location.search
         );
@@ -505,10 +440,10 @@
       // 5. Save default data
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
 
-      // 6. Re-render UI from scratch
+      // 6. Render ulang
       renderApp();
 
-      console.log('✅ Reset complete - All data cleared');
+      console.log('✅ Reset complete');
       return true;
     } catch (e) {
       console.error('Reset error:', e);
@@ -546,7 +481,7 @@
   }
 
   // ============================================================
-  // 10. TOAST NOTIFICATION
+  // 9. TOAST
   // ============================================================
 
   function showToast(message, type, undoCallback) {
@@ -570,126 +505,77 @@
   }
 
   // ============================================================
-  // 11. NAVIGATION SYSTEM - FIXED
+  // 10. NAVIGATION - SIMPLIFIED
   // ============================================================
 
   function navigateToRules() {
-    if (appState.mode !== APP_MODES.ONBOARDING) return;
-    
-    appState.currentView = 'rules';
-    appState.pageHistory.push({ view: 'onboarding' });
-    
-    try {
-      history.pushState({ mode: APP_MODES.ONBOARDING, view: 'rules' }, 'Aturan NEONVAULT', '#rules');
-    } catch (e) {}
-    
+    if (appState.mode !== MODE.ONBOARDING) return;
+    appState.view = 'rules';
     renderOnboardingPage('rules');
     closeOnboardingMenu();
   }
 
   function navigateToAbout() {
-    if (appState.mode !== APP_MODES.ONBOARDING) return;
-    
-    appState.currentView = 'about';
-    appState.pageHistory.push({ view: 'onboarding' });
-    
-    try {
-      history.pushState({ mode: APP_MODES.ONBOARDING, view: 'about' }, 'Tentang NEONVAULT', '#about');
-    } catch (e) {}
-    
+    if (appState.mode !== MODE.ONBOARDING) return;
+    appState.view = 'about';
     renderOnboardingPage('about');
     closeOnboardingMenu();
   }
 
   function goBackOnboarding() {
-    if (appState.mode !== APP_MODES.ONBOARDING) return;
-    
-    if (appState.pageHistory.length > 0) {
-      var last = appState.pageHistory.pop();
-      appState.currentView = last.view || 'onboarding';
-      
-      try {
-        history.back();
-      } catch (e) {}
-      
-      if (appState.currentView === 'onboarding') {
-        renderOnboardingHome();
-      } else {
-        renderOnboardingPage(appState.currentView);
-      }
-    } else {
-      appState.currentView = 'onboarding';
-      renderOnboardingHome();
-    }
+    if (appState.mode !== MODE.ONBOARDING) return;
+    appState.view = 'onboarding';
+    renderOnboardingHome();
   }
 
   function navigateToApp(view) {
-    if (appState.mode !== APP_MODES.APP) return;
-    
-    appState.currentView = view || 'dashboard';
-    
-    try {
-      history.pushState({ mode: APP_MODES.APP, view: appState.currentView }, 'NEONVAULT', '#' + appState.currentView);
-    } catch (e) {}
-    
-    renderAppView(appState.currentView);
-    updateAppNav(appState.currentView);
+    if (appState.mode !== MODE.APP) return;
+    appState.view = view || 'dashboard';
+    renderAppView(appState.view);
+    updateAppNav(appState.view);
   }
 
   function goBackApp() {
-    if (appState.mode !== APP_MODES.APP) return;
-    
-    if (appState.pageHistory.length > 0) {
-      var last = appState.pageHistory.pop();
-      appState.currentView = last.view || 'dashboard';
-      
-      try {
-        history.back();
-      } catch (e) {}
-      
-      renderAppView(appState.currentView);
-      updateAppNav(appState.currentView);
-    } else {
-      appState.currentView = 'dashboard';
-      renderAppView('dashboard');
-      updateAppNav('dashboard');
-    }
+    if (appState.mode !== MODE.APP) return;
+    appState.view = 'dashboard';
+    renderAppView('dashboard');
+    updateAppNav('dashboard');
   }
 
   // ============================================================
-  // 12. RENDER FUNCTIONS
+  // 11. RENDER - MAIN
   // ============================================================
 
   function renderApp() {
-    // Hide loading
+    // Sembunyikan loading
     loadingScreen.classList.add('hidden');
 
-    if (appState.mode === APP_MODES.ONBOARDING) {
-      // Show onboarding, hide app
+    if (appState.mode === MODE.ONBOARDING) {
+      // Tampilkan onboarding, sembunyikan app
       onboardingContainer.classList.add('active');
       appContainer.classList.remove('active');
       
-      if (appState.currentView === 'onboarding') {
+      if (appState.view === 'onboarding') {
         renderOnboardingHome();
-      } else if (appState.currentView === 'rules') {
+      } else if (appState.view === 'rules') {
         renderOnboardingPage('rules');
-      } else if (appState.currentView === 'about') {
+      } else if (appState.view === 'about') {
         renderOnboardingPage('about');
       } else {
         renderOnboardingHome();
       }
     } else {
-      // Show app, hide onboarding
+      // Tampilkan app, sembunyikan onboarding
       onboardingContainer.classList.remove('active');
       appContainer.classList.add('active');
       
-      renderAppView(appState.currentView || 'dashboard');
-      updateAppNav(appState.currentView || 'dashboard');
+      renderAppView(appState.view || 'dashboard');
+      updateAppNav(appState.view || 'dashboard');
     }
   }
 
   // ============================================================
-  // 12a. ONBOARDING RENDER
+  // 12. RENDER - ONBOARDING
   // ============================================================
 
   function renderOnboardingHome() {
@@ -706,22 +592,20 @@
 
   function renderOnboardingPage(page) {
     if (page === 'rules') {
-      onboardingContent.innerHTML = renderRulesPage();
+      onboardingContent.innerHTML = renderRulesContent();
     } else if (page === 'about') {
-      onboardingContent.innerHTML = renderAboutPage();
+      onboardingContent.innerHTML = renderAboutContent();
     }
   }
 
-  function renderRulesPage() {
+  function renderRulesContent() {
     var rules = [
       { number: '01', title: 'Tentang NEONVAULT', content: 'NEONVAULT adalah aplikasi pengelola tabungan pribadi yang berjalan secara lokal tanpa membutuhkan login. Semua data tersimpan di perangkat Anda.' },
-      { number: '02', title: 'Cara Kerja Saldo', content: '<strong>Saldo = Pemasukan - Pengeluaran</strong><br>Saldo akan bertambah saat Anda mencatat pemasukan dan berkurang saat mencatat pengeluaran. Transaksi tabungan tidak mempengaruhi saldo utama karena dialokasikan ke target.' },
+      { number: '02', title: 'Cara Kerja Saldo', content: '<strong>Saldo = Pemasukan - Pengeluaran</strong><br>Saldo akan bertambah saat Anda mencatat pemasukan dan berkurang saat mencatat pengeluaran.' },
       { number: '03', title: 'Target Tabungan', content: 'Buat target tabungan dengan menentukan nominal yang ingin dicapai. Tambahkan uang ke target secara berkala dan pantau progress sampai mencapai 100%.' },
       { number: '04', title: 'Transaksi', content: '<span class="icon">📈</span> <strong>Pemasukan</strong> → uang yang masuk.<br><span class="icon">📉</span> <strong>Pengeluaran</strong> → uang yang keluar.<br><span class="icon">💰</span> <strong>Tabungan</strong> → uang yang dialokasikan ke target.' },
-      { number: '05', title: 'Perkembangan Saldo', content: 'Grafik digunakan untuk melihat perubahan saldo berdasarkan transaksi yang sudah dicatat. Anda dapat memilih periode 7 hari, 30 hari, 3 bulan, atau 1 tahun.' },
-      { number: '06', title: 'Penyimpanan Data', content: '🔒 Data tersimpan secara lokal di perangkat/browser kamu.<br><br>⚠️ Menghapus data browser dapat menyebabkan data NEONVAULT ikut terhapus. Gunakan fitur <strong>Backup</strong> untuk mengamankan data.' },
-      { number: '07', title: 'Backup & Restore', content: 'Gunakan <strong>Backup</strong> untuk menyimpan salinan data NEONVAULT.<br>Gunakan <strong>Restore</strong> untuk mengembalikannya.<br><br>💡 Lakukan backup secara rutin untuk menghindari kehilangan data.' },
-      { number: '08', title: 'Notifikasi', content: '🔔 Pengingat menabung membutuhkan izin notifikasi dari browser. Jika izin ditolak, pengingat tidak dapat ditampilkan. Aktifkan di pengaturan browser Anda.' }
+      { number: '05', title: 'Perkembangan Saldo', content: 'Grafik digunakan untuk melihat perubahan saldo berdasarkan transaksi yang sudah dicatat.' },
+      { number: '06', title: 'Penyimpanan Data', content: '🔒 Data tersimpan secara lokal di perangkat/browser kamu.<br><br>⚠️ Menghapus data browser dapat menyebabkan data NEONVAULT ikut terhapus.' }
     ];
     
     var html = '<div class="onboarding-page">';
@@ -741,7 +625,7 @@
     return html;
   }
 
-  function renderAboutPage() {
+  function renderAboutContent() {
     return `
       <div class="onboarding-page">
         <div class="page-back"><button class="back-button" onclick="App.goBackOnboarding()">← Kembali</button></div>
@@ -751,8 +635,7 @@
         <div class="section">
           <div class="section-title">Apa itu NEONVAULT?</div>
           <div class="section-content">
-            NEONVAULT adalah aplikasi pengelola tabungan pribadi dengan desain cyberpunk futuristik. 
-            Aplikasi ini dirancang untuk membantu Anda mengelola keuangan dengan cara yang menyenangkan dan modern.
+            NEONVAULT adalah aplikasi pengelola tabungan pribadi dengan desain cyberpunk futuristik.
           </div>
         </div>
         
@@ -762,8 +645,7 @@
             <strong>💰 Dashboard</strong> — Lihat total saldo, pemasukan, dan pengeluaran.<br>
             <strong>🎯 Target Tabungan</strong> — Buat dan pantau target tabungan.<br>
             <strong>📊 Transaksi</strong> — Catat pemasukan, pengeluaran, dan tabungan.<br>
-            <strong>📈 Analitik</strong> — Lihat perkembangan saldo dan insight keuangan.<br>
-            <strong>🔒 Data Lokal</strong> — Semua data tersimpan di perangkat Anda.
+            <strong>📈 Analitik</strong> — Lihat perkembangan saldo dan insight keuangan.
           </div>
         </div>
         
@@ -780,7 +662,6 @@
           <div class="section-content">
             🔒 Data tersimpan secara lokal di perangkat Anda.<br>
             🔒 NEONVAULT tidak membutuhkan login.<br>
-            🔒 Tidak ada data yang dikirim ke server.<br>
             ⚠️ Hapus data browser dapat menghapus data NEONVAULT.
           </div>
         </div>
@@ -789,31 +670,18 @@
   }
 
   // ============================================================
-  // 12b. APPLICATION RENDER
+  // 13. RENDER - APP
   // ============================================================
 
   function renderAppView(view) {
     switch (view) {
-      case 'dashboard':
-        renderDashboard();
-        break;
-      case 'goals':
-        renderGoals();
-        break;
-      case 'goalDetail':
-        renderGoalDetail();
-        break;
-      case 'transactions':
-        renderTransactions();
-        break;
-      case 'analytics':
-        renderAnalytics();
-        break;
-      case 'settings':
-        renderSettings();
-        break;
-      default:
-        renderDashboard();
+      case 'dashboard': renderDashboard(); break;
+      case 'goals': renderGoals(); break;
+      case 'goalDetail': renderGoalDetail(); break;
+      case 'transactions': renderTransactions(); break;
+      case 'analytics': renderAnalytics(); break;
+      case 'settings': renderSettings(); break;
+      default: renderDashboard();
     }
   }
 
@@ -824,7 +692,7 @@
   }
 
   // ============================================================
-  // 13. DASHBOARD RENDER
+  // 14. RENDER - DASHBOARD
   // ============================================================
 
   function renderDashboard() {
@@ -870,12 +738,6 @@
       '</div><div class="stat-label">Tercapai</div></div>';
     html += '<div class="quick-stat glass"><div class="stat-number">' + getActiveGoals(goals).length +
       '</div><div class="stat-label">Aktif</div></div>';
-    html += '</div>';
-
-    html += '<div class="data-warning">';
-    html += '<span class="warning-icon">🔒</span>';
-    html +=
-      '<span>Data tersimpan secara lokal di perangkat ini. Jika browser atau data situs dihapus, data tabungan dapat ikut terhapus. <strong>Download backup</strong> secara rutin.</span>';
     html += '</div>';
 
     html += '<div class="glass">';
@@ -939,7 +801,7 @@
   }
 
   // ============================================================
-  // 14. GOAL FUNCTIONS
+  // 15. RENDER - GOALS
   // ============================================================
 
   function renderGoals() {
@@ -1006,7 +868,7 @@
   }
 
   function renderGoalDetail() {
-    var goal = appData.goals.find(function(g) { return g.id === appState.currentGoalId; });
+    var goal = appData.goals.find(function(g) { return g.id === appState.goalId; });
     if (!goal) {
       showToast('Target tidak ditemukan', 'error');
       navigateToApp('goals');
@@ -1092,7 +954,7 @@
   }
 
   // ============================================================
-  // 15. TRANSACTIONS RENDER
+  // 16. RENDER - TRANSACTIONS
   // ============================================================
 
   function renderTransactions() {
@@ -1156,7 +1018,7 @@
   }
 
   // ============================================================
-  // 16. ANALYTICS RENDER
+  // 17. RENDER - ANALYTICS
   // ============================================================
 
   function renderAnalytics() {
@@ -1262,7 +1124,7 @@
   }
 
   // ============================================================
-  // 17. CHART FUNCTIONS
+  // 18. CHART
   // ============================================================
 
   function drawBalanceChart(canvasId, data) {
@@ -1300,8 +1162,7 @@
       fill: isDark ? 'rgba(0,229,255,0.05)' : 'rgba(124,77,255,0.05)',
       grid: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
       text: isDark ? '#88a0b8' : '#6a6a8e',
-      point: isDark ? '#00e5ff' : '#7c4dff',
-      pointHover: isDark ? '#ffffff' : '#1a1a2e'
+      point: isDark ? '#00e5ff' : '#7c4dff'
     };
 
     ctx.strokeStyle = colors.grid;
@@ -1320,11 +1181,9 @@
     ctx.shadowColor = colors.line + '66';
     ctx.shadowBlur = 12;
 
-    var points = [];
     for (var i = 0; i < values.length; i++) {
       var x = pad.left + (i / (values.length - 1 || 1)) * chartW;
       var y = pad.top + chartH - ((values[i] - minVal) / range) * chartH;
-      points.push({ x: x, y: y, index: i });
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -1347,7 +1206,6 @@
     ctx.fillStyle = colors.fill;
     ctx.fill();
 
-    var tooltipData = [];
     for (var p = 0; p < values.length; p++) {
       var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
       var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
@@ -1366,48 +1224,11 @@
         ctx.textAlign = 'center';
         ctx.fillText(labels[p], px, H - 4);
       }
-
-      tooltipData.push({
-        x: px, y: py, index: p,
-        date: data[p].date,
-        balance: data[p].balance,
-        income: data[p].income || 0,
-        expense: data[p].expense || 0,
-        label: labels[p]
-      });
-    }
-
-    var tooltip = document.getElementById('chartTooltip');
-    if (tooltip) {
-      canvas.onmousemove = function(e) {
-        var rect = canvas.getBoundingClientRect();
-        var mouseX = e.clientX - rect.left;
-        var mouseY = e.clientY - rect.top;
-
-        for (var t = 0; t < tooltipData.length; t++) {
-          var pt = tooltipData[t];
-          var dist = Math.sqrt(Math.pow(mouseX - pt.x, 2) + Math.pow(mouseY - pt.y, 2));
-          if (dist < 20) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = (pt.x + 10) + 'px';
-            tooltip.style.top = (pt.y - 40) + 'px';
-            tooltip.innerHTML = 
-              '<div class="tooltip-date">' + formatDate(pt.date) + '</div>' +
-              '<div class="tooltip-amount">' + formatCurrency(pt.balance) + '</div>' +
-              (pt.income > 0 ? '<div class="tooltip-detail income">↑ +' + formatCurrency(pt.income) + '</div>' : '') +
-              (pt.expense > 0 ? '<div class="tooltip-detail expense">↓ -' + formatCurrency(pt.expense) + '</div>' : '');
-            return;
-          }
-        }
-        tooltip.style.display = 'none';
-      };
-
-      canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
     }
   }
 
   // ============================================================
-  // 18. SETTINGS RENDER
+  // 19. RENDER - SETTINGS
   // ============================================================
 
   function renderSettings() {
@@ -1494,12 +1315,6 @@
       '<button class="neon-btn danger small" onclick="App.openResetModal()" style="width:100%;text-align:center;">🗑️ Reset Semua Data</button>';
     html += '</div></div>';
 
-    html += '<div class="data-warning" style="margin-bottom:12px;">';
-    html += '<span class="warning-icon">🔒</span>';
-    html +=
-      '<span>Data tersimpan secara lokal di perangkat ini. <strong>Download backup</strong> secara rutin untuk menghindari kehilangan data.</span>';
-    html += '</div>';
-
     html += '<div class="glass" style="margin-bottom:12px;">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
@@ -1523,7 +1338,7 @@
   }
 
   // ============================================================
-  // 19. MODAL FUNCTIONS
+  // 20. MODAL FUNCTIONS
   // ============================================================
 
   function openTransactionModal(type) {
@@ -1613,7 +1428,7 @@
       function() { App.undoTransaction(); }
     );
 
-    renderAppView(appState.currentView);
+    renderAppView(appState.view);
   }
 
   function undoTransaction() {
@@ -1630,7 +1445,7 @@
       saveData(appData);
       transactionToUndo = null;
       showToast('Transaksi dibatalkan', 'warning');
-      renderAppView(appState.currentView);
+      renderAppView(appState.view);
     }
   }
 
@@ -1640,7 +1455,7 @@
   }
 
   // ============================================================
-  // 20. GOAL MODAL FUNCTIONS
+  // 21. GOAL MODAL FUNCTIONS
   // ============================================================
 
   function openGoalModal(goalId) {
@@ -1739,7 +1554,7 @@
     closeModal('goalModal');
 
     if (goal) {
-      appState.currentGoalId = goal.id;
+      appState.goalId = goal.id;
       navigateToApp('goalDetail');
     } else {
       navigateToApp('goals');
@@ -1751,11 +1566,11 @@
     appData.goals = appData.goals.filter(function(g) { return g.id !== goalId; });
     saveData(appData);
     showToast('🗑️ Target dihapus', 'warning');
-    if (appState.currentGoalId === goalId) {
-      appState.currentGoalId = null;
+    if (appState.goalId === goalId) {
+      appState.goalId = null;
       navigateToApp('goals');
     } else {
-      renderAppView(appState.currentView);
+      renderAppView(appState.view);
     }
   }
 
@@ -1816,11 +1631,11 @@
     saveData(appData);
     closeModal('goalAddModal');
     showToast('💰 ' + formatCurrency(amount) + ' ditambahkan ke ' + goal.name, 'success');
-    renderAppView(appState.currentView);
+    renderAppView(appState.view);
   }
 
   // ============================================================
-  // 21. NOTIFICATION FUNCTIONS
+  // 22. NOTIFICATION FUNCTIONS
   // ============================================================
 
   function toggleNotification() {
@@ -1934,7 +1749,7 @@
   }
 
   // ============================================================
-  // 22. THEME FUNCTIONS
+  // 23. THEME FUNCTIONS
   // ============================================================
 
   function setTheme(theme) {
@@ -1942,7 +1757,7 @@
     saveData(appData);
     applyTheme(theme);
     showToast('Tema: ' + theme, 'success');
-    renderAppView(appState.currentView);
+    renderAppView(appState.view);
   }
 
   function applyTheme(theme) {
@@ -1952,7 +1767,7 @@
   }
 
   // ============================================================
-  // 23. BACKUP / RESTORE FUNCTIONS
+  // 24. BACKUP / RESTORE FUNCTIONS
   // ============================================================
 
   function downloadBackup() {
@@ -1986,7 +1801,7 @@
         var success = importData(e.target.result);
         if (success) {
           appData = loadData();
-          renderAppView(appState.currentView);
+          renderAppView(appState.view);
           showToast('📤 Backup berhasil dipulihkan', 'success');
         } else {
           showToast('Format backup tidak valid', 'error');
@@ -2000,7 +1815,7 @@
   }
 
   // ============================================================
-  // 24. RESET MODAL FUNCTIONS
+  // 25. RESET MODAL FUNCTIONS
   // ============================================================
 
   function openResetModal() {
@@ -2037,43 +1852,37 @@
   }
 
   // ============================================================
-  // 25. ONBOARDING MENU FUNCTIONS
+  // 26. ONBOARDING MENU FUNCTIONS
   // ============================================================
 
   function toggleOnboardingMenu() {
-    if (appState.mode !== APP_MODES.ONBOARDING) return;
-    
-    appState.isOnboardingMenuOpen = !appState.isOnboardingMenuOpen;
-    if (appState.isOnboardingMenuOpen) {
+    if (appState.mode !== MODE.ONBOARDING) return;
+    var isOpen = onboardingMobileMenu.classList.contains('open');
+    if (isOpen) {
+      closeOnboardingMenu();
+    } else {
       onboardingMobileMenu.classList.add('open');
       onboardingHamburger.setAttribute('aria-expanded', 'true');
-    } else {
-      onboardingMobileMenu.classList.remove('open');
-      onboardingHamburger.setAttribute('aria-expanded', 'false');
     }
   }
 
   function closeOnboardingMenu() {
-    appState.isOnboardingMenuOpen = false;
     onboardingMobileMenu.classList.remove('open');
     onboardingHamburger.setAttribute('aria-expanded', 'false');
   }
 
   // ============================================================
-  // 26. START APP
+  // 27. START APP
   // ============================================================
 
   function startApp() {
-    // Check if user already has name
     if (appData.settings.userName) {
-      // Enter app mode
-      appState.mode = APP_MODES.APP;
-      appState.currentView = 'dashboard';
-      appState.pageHistory = [];
+      appState.mode = MODE.APP;
+      appState.view = 'dashboard';
       
       try {
         history.replaceState(
-          { mode: APP_MODES.APP, view: 'dashboard' },
+          { mode: MODE.APP, view: 'dashboard' },
           'NEONVAULT - Dashboard',
           '#dashboard'
         );
@@ -2081,14 +1890,12 @@
       
       renderApp();
       
-      // Start reminders if enabled
       if (notificationEnabled && Notification.permission === 'granted') {
         startReminders();
       }
       
       showToast('Selamat datang kembali, ' + appData.settings.userName + '! ✦', 'success');
     } else {
-      // Show name popup
       namePopup.classList.add('active');
       setTimeout(function() {
         nameInput.focus();
@@ -2110,14 +1917,12 @@
     
     namePopup.classList.remove('active');
     
-    // Enter app mode
-    appState.mode = APP_MODES.APP;
-    appState.currentView = 'dashboard';
-    appState.pageHistory = [];
+    appState.mode = MODE.APP;
+    appState.view = 'dashboard';
     
     try {
       history.replaceState(
-        { mode: APP_MODES.APP, view: 'dashboard' },
+        { mode: MODE.APP, view: 'dashboard' },
         'NEONVAULT - Dashboard',
         '#dashboard'
       );
@@ -2125,7 +1930,6 @@
     
     renderApp();
     
-    // Start reminders if enabled
     if (notificationEnabled && Notification.permission === 'granted') {
       startReminders();
     }
@@ -2134,7 +1938,7 @@
   }
 
   // ============================================================
-  // 27. CLOCK
+  // 28. CLOCK
   // ============================================================
 
   function updateClock() {
@@ -2158,34 +1962,25 @@
   }
 
   // ============================================================
-  // 28. POPSTATE HANDLER
+  // 29. POPSTATE HANDLER
   // ============================================================
 
   function handlePopState(e) {
     if (e.state) {
-      if (e.state.mode === APP_MODES.ONBOARDING) {
-        appState.mode = APP_MODES.ONBOARDING;
-        appState.currentView = e.state.view || 'onboarding';
+      if (e.state.mode === MODE.ONBOARDING) {
+        appState.mode = MODE.ONBOARDING;
+        appState.view = e.state.view || 'onboarding';
         renderApp();
-      } else if (e.state.mode === APP_MODES.APP) {
-        appState.mode = APP_MODES.APP;
-        appState.currentView = e.state.view || 'dashboard';
-        renderApp();
-      }
-    } else {
-      // No state, go to appropriate default
-      if (appState.mode === APP_MODES.ONBOARDING) {
-        appState.currentView = 'onboarding';
-        renderApp();
-      } else {
-        appState.currentView = 'dashboard';
+      } else if (e.state.mode === MODE.APP) {
+        appState.mode = MODE.APP;
+        appState.view = e.state.view || 'dashboard';
         renderApp();
       }
     }
   }
 
   // ============================================================
-  // 29. EXPOSE GLOBALLY
+  // 30. EXPOSE GLOBALLY
   // ============================================================
 
   var App = {
@@ -2236,39 +2031,34 @@
   };
 
   // ============================================================
-  // 30. INITIALIZATION
+  // 31. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
-      // Load notification state
       var savedNotification = localStorage.getItem(NOTIFICATION_KEY);
       notificationEnabled = savedNotification === 'enabled';
 
-      // Load data
       appData = loadData();
       applyTheme(appData.settings.theme || 'dark');
 
-      // Check if user has completed onboarding
       var onboardingComplete = appData.settings.onboardingComplete && appData.settings.userName;
 
       if (!onboardingComplete) {
-        appState.mode = APP_MODES.ONBOARDING;
-        appState.currentView = 'onboarding';
+        appState.mode = MODE.ONBOARDING;
+        appState.view = 'onboarding';
       } else {
-        appState.mode = APP_MODES.APP;
-        appState.currentView = 'dashboard';
+        appState.mode = MODE.APP;
+        appState.view = 'dashboard';
       }
 
-      // Render app
       renderApp();
 
-      // Start reminders if in app mode
-      if (appState.mode === APP_MODES.APP && notificationEnabled && Notification.permission === 'granted') {
+      if (appState.mode === MODE.APP && notificationEnabled && Notification.permission === 'granted') {
         startReminders();
       }
 
-      // Setup event listeners
+      // Event listeners
       onboardingStartBtn.addEventListener('click', startApp);
       onboardingHamburger.addEventListener('click', toggleOnboardingMenu);
       onboardingMobileClose.addEventListener('click', closeOnboardingMenu);
@@ -2277,12 +2067,10 @@
         if (e.key === 'Enter') confirmName();
       });
 
-      // Close mobile menu on outside click
+      // Close menu on outside click
       document.addEventListener('click', function(e) {
-        if (appState.isOnboardingMenuOpen) {
-          var menu = onboardingMobileMenu;
-          var hamburger = onboardingHamburger;
-          if (menu && !menu.contains(e.target) && !hamburger.contains(e.target)) {
+        if (onboardingMobileMenu.classList.contains('open')) {
+          if (!onboardingMobileMenu.contains(e.target) && !onboardingHamburger.contains(e.target)) {
             closeOnboardingMenu();
           }
         }
@@ -2291,27 +2079,23 @@
       // ESC key closes menu
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-          if (appState.isOnboardingMenuOpen) {
+          if (onboardingMobileMenu.classList.contains('open')) {
             closeOnboardingMenu();
           }
-          // Close any open modals
           document.querySelectorAll('.popup-overlay.active').forEach(function(modal) {
             modal.classList.remove('active');
           });
         }
       });
 
-      // Popstate handler
       window.addEventListener('popstate', handlePopState);
 
-      // Clock
       updateClock();
       setInterval(updateClock, 1000);
 
-      console.log('🚀 NEONVAULT V2.0.2 initialized successfully!');
+      console.log('🚀 NEONVAULT V2.0.2 STABILIZED');
       console.log('📊 Mode:', appState.mode);
-      console.log('📊 View:', appState.currentView);
-      console.log('📊 Data:', appData);
+      console.log('📊 View:', appState.view);
 
     } catch (e) {
       console.error('Init error:', e);
@@ -2320,7 +2104,6 @@
     }
   }
 
-  // Start when DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
