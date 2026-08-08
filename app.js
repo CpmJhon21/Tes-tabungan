@@ -1626,6 +1626,18 @@
       '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>';
     html += '</div></div>';
 
+     // ============================================================
+  // JHON FORUM ACCESS - DITAMBAHKAN
+  // ============================================================
+  html += '<div class="glass jhon-forum-card" style="margin-bottom:12px;">';
+  html += '<div class="jhon-forum-title">JHON FORUM ACCESS</div>';
+  html += '<div class="jhon-forum-divider"></div>';
+  html +=
+    '<p class="jhon-forum-desc">Bergabunglah dengan saluran komunikasi kami untuk pembaruan sistem & pelaporan bug.</p>';
+  html +=
+    '<a href="https://whatsapp.com/channel/0029VaLiUSS5q08hPj5mcH0m" target="_blank" rel="noopener noreferrer" class="jhon-forum-btn">Join Saluran</a>';
+  html += '</div>';
+
     mainContent.innerHTML = html;
   }
 
