@@ -82,9 +82,9 @@ vercel
 • Responsive dari 360px - 1440px
 
 • PWA ready
-
-🔧 Konfigurasi
-Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.
+```
+###🔧 Konfigurasi
+Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.###
 
 
 *Made with ✦ by NEONVAULT Team*
