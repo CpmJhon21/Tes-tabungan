@@ -1515,4 +1515,201 @@ body.light-mode .jhon-forum-card:hover {
     padding: 8px 16px;
     min-height: 36px;
   }
+   /* ============================================================
+   NOTIFICATION TOGGLE
+   ============================================================ */
+
+.notification-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.notification-toggle-info {
+  flex: 1;
+  min-width: 140px;
+}
+
+.notification-toggle-info .toggle-label {
+  font-weight: 600;
+  font-size: clamp(0.9rem, 1.3vw, 1rem);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-toggle-info .toggle-desc {
+  font-size: clamp(0.7rem, 1vw, 0.8rem);
+  color: #88a0b8;
+  margin-top: 2px;
+}
+
+.notification-toggle-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Toggle Switch */
+.toggle-switch-modern {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.toggle-switch-modern .toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  transition: 0.3s ease;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toggle-switch-modern .toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #88a0b8;
+  transition: 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-switch-modern.is-active {
+  border-color: rgba(0, 229, 255, 0.3);
+}
+
+.toggle-switch-modern.is-active .toggle-track {
+  background: rgba(0, 229, 255, 0.15);
+}
+
+.toggle-switch-modern.is-active .toggle-thumb {
+  transform: translateX(24px);
+  background: #00e5ff;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+}
+
+.toggle-switch-modern:hover {
+  border-color: rgba(0, 229, 255, 0.2);
+}
+
+.toggle-switch-modern.is-active:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+/* Status Text */
+.toggle-status-text {
+  font-size: clamp(0.7rem, 1vw, 0.8rem);
+  font-weight: 600;
+  min-width: 36px;
+  text-align: center;
+  transition: 0.3s ease;
+}
+
+.toggle-status-text.off {
+  color: #88a0b8;
+}
+
+.toggle-status-text.on {
+  color: #00ff88;
+}
+
+/* Permission Denied State */
+.notification-permission-denied {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 77, 109, 0.08);
+  border: 1px solid rgba(255, 77, 109, 0.15);
+  border-radius: 12px;
+  color: #ff4d6d;
+  font-size: clamp(0.75rem, 1vw, 0.85rem);
+}
+
+.notification-permission-denied .denied-icon {
+  font-size: 1.2rem;
+}
+
+/* Light Mode */
+body.light-mode .toggle-switch-modern {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .toggle-switch-modern .toggle-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-mode .toggle-switch-modern .toggle-thumb {
+  background: #6a6a8e;
+}
+
+body.light-mode .toggle-switch-modern.is-active {
+  border-color: rgba(124, 77, 255, 0.3);
+}
+
+body.light-mode .toggle-switch-modern.is-active .toggle-track {
+  background: rgba(124, 77, 255, 0.15);
+}
+
+body.light-mode .toggle-switch-modern.is-active .toggle-thumb {
+  background: #7c4dff;
+  box-shadow: 0 0 20px rgba(124, 77, 255, 0.3);
+}
+
+body.light-mode .toggle-status-text.off {
+  color: #6a6a8e;
+}
+
+body.light-mode .toggle-status-text.on {
+  color: #00a86b;
+}
+
+body.light-mode .notification-permission-denied {
+  background: rgba(231, 76, 60, 0.08);
+  border-color: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .notification-toggle-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .notification-toggle-status {
+    justify-content: flex-start;
+  }
+  
+  .toggle-switch-modern {
+    width: 48px;
+    height: 26px;
+  }
+  
+  .toggle-switch-modern .toggle-thumb {
+    width: 20px;
+    height: 20px;
+    top: 2px;
+    left: 2px;
+  }
+  
+  .toggle-switch-modern.is-active .toggle-thumb {
+    transform: translateX(22px);
+  }
 }
