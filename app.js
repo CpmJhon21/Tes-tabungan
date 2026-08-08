@@ -1,7 +1,7 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2 - Fixed Navigation
- * Version: 2.0.2
+ * app.js – NEONVAULT V2 - Fixed Reset + Notification
+ * Version: 2.0.3
  * ============================================================
  */
 
@@ -271,6 +271,7 @@
   // ============================================================
 
   var STORAGE_KEY = 'neonvault_data_v2';
+  var NOTIFICATION_KEY = 'neonvault_notifications';
 
   function getDefaultData() {
     return {
@@ -278,7 +279,7 @@
       settings: {
         theme: 'dark',
         currency: 'IDR',
-        reminders: true,
+        reminders: false,
         onboardingComplete: false,
         userName: ''
       },
@@ -294,6 +295,7 @@
       newData.settings.theme = oldData.settings.theme || 'dark';
       newData.settings.userName = oldData.settings.userName || '';
       newData.settings.onboardingComplete = oldData.settings.onboardingComplete || false;
+      newData.settings.reminders = oldData.settings.reminders || false;
     }
     if (oldData.goals && Array.isArray(oldData.goals)) {
       newData.goals = oldData.goals.map(function(g) {
@@ -365,15 +367,97 @@
     }
   }
 
+  // ============================================================
+  // 4. RESET FUNCTION - FIXED
+  // ============================================================
+
   function resetAllData() {
     try {
-      var def = getDefaultData();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
-      return def;
+      // 1. Hapus semua data dari localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(NOTIFICATION_KEY);
+      localStorage.removeItem('neonvault_last_reminder');
+      
+      // 2. Hapus semua backup terkait
+      var keys = Object.keys(localStorage);
+      keys.forEach(function(key) {
+        if (key.startsWith('neonvault_data_v2_backup_')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // 3. Reset state aplikasi di memory
+      appData = getDefaultData();
+      appData.settings.onboardingComplete = false;
+      appData.settings.reminders = false;
+      
+      // 4. Reset navigation state
+      currentPage = 'dashboard';
+      currentGoalId = null;
+      pageHistory = [];
+      transactionToUndo = null;
+      
+      // 5. Reset notification state
+      notificationEnabled = false;
+      
+      // 6. Reset browser history
+      try {
+        history.replaceState(
+          { view: 'onboarding' },
+          'NEONVAULT - Onboarding',
+          window.location.pathname + window.location.search
+        );
+      } catch (e) {
+        // Silent fail
+      }
+
+      // 7. Simpan default data ke localStorage
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+
+      // 8. Tampilkan onboarding
+      showOnboardingAfterReset();
+
+      console.log('✅ Reset complete - All data cleared');
+      return true;
     } catch (e) {
       console.error('Reset error:', e);
-      return null;
+      return false;
     }
+  }
+
+  function showOnboardingAfterReset() {
+    // Hide dashboard
+    if (dashboard) {
+      dashboard.classList.remove('active');
+    }
+    
+    // Hide name popup
+    if (namePopup) {
+      namePopup.classList.remove('active');
+    }
+    
+    // Show onboarding
+    if (onboarding) {
+      onboarding.classList.add('active');
+    }
+    
+    // Hide loading
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+    }
+    
+    // Reset current page
+    currentPage = 'dashboard';
+    
+    // Clear main content
+    if (mainContent) {
+      mainContent.innerHTML = '';
+    }
+    
+    // Update nav buttons
+    updateNavButtons();
+    
+    showToast('🗑️ Semua data telah direset', 'warning');
   }
 
   function exportData() {
@@ -406,7 +490,7 @@
   }
 
   // ============================================================
-  // 4. APPLICATION STATE
+  // 5. APPLICATION STATE
   // ============================================================
 
   var appData = null;
@@ -417,9 +501,10 @@
   var chartPeriod = 30;
   var reminderInterval = null;
   var pageHistory = [];
+  var notificationEnabled = false;
 
   // ============================================================
-  // 5. DOM REFS
+  // 6. DOM REFS
   // ============================================================
 
   var loadingScreen = document.getElementById('loadingScreen');
@@ -437,7 +522,7 @@
   var bottomNav = document.getElementById('bottomNav');
 
   // ============================================================
-  // 6. TOAST NOTIFICATION
+  // 7. TOAST NOTIFICATION
   // ============================================================
 
   function showToast(message, type, undoCallback) {
@@ -461,7 +546,7 @@
   }
 
   // ============================================================
-  // 7. NAVIGATION SYSTEM
+  // 8. NAVIGATION SYSTEM
   // ============================================================
 
   function goBack() {
@@ -469,26 +554,17 @@
       var last = pageHistory.pop();
       currentPage = last.page;
       currentGoalId = last.params || null;
-      
-      // Update browser history
       try {
         history.back();
-      } catch (e) {
-        // Fallback
-        renderCurrentPage();
-        updateNavButtons();
-      }
-      
+      } catch (e) {}
       renderCurrentPage();
       updateNavButtons();
     } else {
-      // If no history, go to dashboard
       navigateTo('dashboard');
     }
   }
 
   function navigateTo(page, params) {
-    // Save current page to history (except when going back)
     if (currentPage && currentPage !== page) {
       pageHistory.push({ page: currentPage, params: currentGoalId });
       if (pageHistory.length > 20) pageHistory.shift();
@@ -499,41 +575,32 @@
       currentGoalId = params;
     }
 
-    // Update browser history
     try {
       var state = { page: page, goalId: currentGoalId };
       var url = '#' + page + (currentGoalId ? '/' + currentGoalId : '');
       history.pushState(state, '', url);
-    } catch (e) {
-      // Silent fail
-    }
+    } catch (e) {}
 
     renderCurrentPage();
     updateNavButtons();
   }
 
   function updateNavButtons() {
-    // Update bottom nav
     document.querySelectorAll('.nav-item').forEach(function(item) {
       item.classList.toggle('active', item.dataset.page === currentPage);
     });
   }
 
-  // Handle browser back
   window.addEventListener('popstate', function(e) {
     if (e.state && e.state.page) {
       currentPage = e.state.page;
       currentGoalId = e.state.goalId || null;
-      
-      // Remove current page from history if it was added
       if (pageHistory.length > 0 && pageHistory[pageHistory.length - 1].page === currentPage) {
         pageHistory.pop();
       }
-      
       renderCurrentPage();
       updateNavButtons();
     } else {
-      // Fallback: go to dashboard
       currentPage = 'dashboard';
       currentGoalId = null;
       pageHistory = [];
@@ -543,7 +610,7 @@
   });
 
   // ============================================================
-  // 8. MODAL FUNCTIONS
+  // 9. MODAL FUNCTIONS
   // ============================================================
 
   function closeModal(id) {
@@ -662,7 +729,7 @@
   }
 
   // ============================================================
-  // 9. GOAL FUNCTIONS
+  // 10. GOAL FUNCTIONS
   // ============================================================
 
   function openGoalModal(goalId) {
@@ -760,7 +827,6 @@
     saveData(appData);
     closeModal('goalModal');
 
-    // Navigate to goal detail
     if (goal) {
       navigateTo('goalDetail', goal.id);
     } else {
@@ -842,7 +908,7 @@
   }
 
   // ============================================================
-  // 10. RENDER FUNCTIONS
+  // 11. RENDER FUNCTIONS
   // ============================================================
 
   function renderBackButton() {
@@ -980,12 +1046,10 @@
 
     var html = '';
     
-    // Back button
     html += '<div style="margin-bottom:12px;">';
     html += renderBackButton();
     html += '</div>';
 
-    // Goal Detail Card
     html += '<div class="glass" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.3)' : (goal.color || '#00e5ff') + '44') + ';">';
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">';
     html += '<div><div style="font-size:2.5rem;">' + (goal.icon || '🎯') + '</div>';
@@ -996,12 +1060,10 @@
       (isCompleted ? '✅ Selesai' : '🔄 Aktif') + '</span>';
     html += '</div>';
 
-    // Progress
     html += '<div class="goal-card-progress" style="height:10px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin:12px 0;">';
     html += '<div class="goal-fill" style="width:' + progress + '%;background:' + (goal.color || '#00e5ff') + ';height:100%;border-radius:4px;transition:width 0.6s ease;"></div>';
     html += '</div>';
 
-    // Stats
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0;">';
     html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
     html += '<div style="font-size:0.7rem;color:#88a0b8;">Progress</div>';
@@ -1024,14 +1086,12 @@
     }
     html += '</div>';
 
-    // Note
     if (goal.note) {
       html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;margin:8px 0;font-size:0.9rem;color:#b0c4de;">';
       html += '📝 ' + sanitize(goal.note);
       html += '</div>';
     }
 
-    // Actions
     html += '<div class="goal-card-actions" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">';
     html += '<button class="neon-btn primary" onclick="openGoalAddModal(\'' + goal.id + '\')" style="flex:1;min-width:100px;">💰 Tambah Tabungan</button>';
     html += '<button class="neon-btn" onclick="openGoalModal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">✏️ Edit</button>';
@@ -1039,7 +1099,6 @@
     html += '</div>';
     html += '</div>';
 
-    // Related Transactions
     var relatedTxs = appData.transactions.filter(function(t) { return t.goalId === goal.id; });
     if (relatedTxs.length > 0) {
       html += '<div class="glass" style="margin-top:16px;">';
@@ -1185,7 +1244,7 @@
   }
 
   // ============================================================
-  // 11. ANALYTICS FUNCTIONS
+  // 12. ANALYTICS FUNCTIONS
   // ============================================================
 
   function renderAnalytics() {
@@ -1230,7 +1289,6 @@
     html += '<div class="page-container active">';
     html += '<div class="section-title" style="font-size:1.2rem;margin-bottom:16px;">📈 Financial Analytics</div>';
 
-    // Stats
     html +=
       '<div class="analytics-insights" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">';
     html += '<div class="insight-card glass"><div class="insight-value">' + formatCurrency(totalSav +
@@ -1243,7 +1301,6 @@
       '</div><div class="insight-label">Target Tercapai</div></div>';
     html += '</div>';
 
-    // Period filter
     html += '<div class="glass" style="margin-bottom:16px;">';
     html +=
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
@@ -1257,14 +1314,12 @@
     html += '<div class="analytics-chart"><canvas id="balanceChart"></canvas></div>';
     html += '</div>';
 
-    // Income vs Expense
     html += '<div class="analytics-grid" style="margin-bottom:16px;">';
     html += '<div class="glass full-width">';
     html += '<div style="font-weight:600;margin-bottom:8px;">📊 Pemasukan vs Pengeluaran</div>';
     html += '<div class="analytics-chart" style="height:150px;"><canvas id="incomeExpenseChart"></canvas></div>';
     html += '</div></div>';
 
-    // Categories & Insights
     html += '<div class="analytics-grid">';
     html += '<div class="glass"><div style="font-weight:600;margin-bottom:8px;">📊 Kategori Pengeluaran</div>';
     html += '<div class="analytics-chart" style="height:180px;"><canvas id="categoryChart"></canvas></div></div>';
@@ -1280,7 +1335,6 @@
 
     mainContent.innerHTML = html;
 
-    // Render charts after DOM update
     setTimeout(function() {
       drawLineChart('balanceChart', balanceData);
       drawBarChart('incomeExpenseChart', incomeData, expenseData);
@@ -1294,7 +1348,7 @@
   }
 
   // ============================================================
-  // 12. CHART FUNCTIONS
+  // 13. CHART FUNCTIONS
   // ============================================================
 
   function drawLineChart(canvasId, data) {
@@ -1341,7 +1395,6 @@
       point: isDark ? '#00e5ff' : '#7c4dff'
     };
 
-    // Grid
     ctx.strokeStyle = colors.grid;
     ctx.lineWidth = 0.5;
     for (var g = 0; g <= 4; g++) {
@@ -1352,7 +1405,6 @@
       ctx.stroke();
     }
 
-    // Line
     ctx.beginPath();
     ctx.strokeStyle = colors.line;
     ctx.lineWidth = 2;
@@ -1367,7 +1419,6 @@
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Points
     for (var p = 0; p < values.length; p++) {
       var px = pad.left + (p / (values.length - 1 || 1)) * chartW;
       var py = pad.top + chartH - ((values[p] - minVal) / range) * chartH;
@@ -1431,7 +1482,6 @@
     var barWidth = Math.min(30, (chartW / incomeData.length) * 0.35);
     var gap = (chartW - barWidth * 2 * incomeData.length) / (incomeData.length + 1);
 
-    // Grid
     ctx.strokeStyle = colors.grid;
     ctx.lineWidth = 0.5;
     for (var g = 0; g <= 4; g++) {
@@ -1555,12 +1605,22 @@
   }
 
   // ============================================================
-  // 13. SETTINGS FUNCTIONS
+  // 14. SETTINGS FUNCTIONS (FIXED - Reset + Notification)
   // ============================================================
 
   function renderSettings() {
     currentPage = 'settings';
     var settings = appData.settings || {};
+
+    // Check notification permission
+    var hasNotificationSupport = 'Notification' in window;
+    var permission = hasNotificationSupport ? Notification.permission : 'denied';
+    var isPermissionGranted = permission === 'granted';
+    var isPermissionDenied = permission === 'denied';
+
+    // Load notification state
+    var notificationState = localStorage.getItem(NOTIFICATION_KEY);
+    var isNotificationOn = notificationState === 'enabled' && isPermissionGranted;
 
     var html = '';
     html += '<div class="page-container active">';
@@ -1579,18 +1639,51 @@
       '" onclick="setTheme(\'system\')">🖥️ System</button>';
     html += '</div></div>';
 
-    // Reminder
+    // Notification - NEW DESIGN
     html += '<div class="glass" style="margin-bottom:12px;">';
     html +=
-      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Notifikasi</h4>';
-    html += '<div style="display:flex;align-items:center;gap:12px;">';
-    html += '<label class="toggle-switch" style="display:flex;align-items:center;cursor:pointer;">';
-    html += '<input type="checkbox" id="reminderToggle" ' + (settings.reminders ? 'checked' : '') +
-      ' onchange="toggleReminder(this.checked)" style="display:none;" />';
-    html +=
-      '<span class="toggle-slider" style="width:44px;height:24px;background:rgba(255,255,255,0.1);border-radius:12px;position:relative;transition:0.3s;flex-shrink:0;"></span>';
-    html += '<span style="margin-left:10px;">Aktifkan Pengingat Menabung</span>';
-    html += '</label></div></div>';
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🔔 Pengingat Menabung</h4>';
+    
+    if (isPermissionDenied) {
+      // Permission denied state
+      html += '<div class="notification-permission-denied">';
+      html += '<span class="denied-icon">❌</span>';
+      html += '<span>Notifikasi diblokir oleh browser. Silakan aktifkan izin notifikasi di pengaturan browser.</span>';
+      html += '</div>';
+    } else {
+      // Toggle UI
+      html += '<div class="notification-toggle-wrapper">';
+      html += '<div class="notification-toggle-info">';
+      html += '<div class="toggle-label">';
+      html += isNotificationOn ? '✓' : '🔔';
+      html += ' <span>' + (isNotificationOn ? 'Pengingat Menabung Aktif' : 'Aktifkan Pengingat Menabung') + '</span>';
+      html += '</div>';
+      html += '<div class="toggle-desc">' + 
+        (isNotificationOn ? 'Kamu akan mendapatkan pengingat untuk tetap konsisten menabung.' : 
+        'Dapatkan pengingat untuk tetap konsisten menabung.') +
+      '</div>';
+      html += '</div>';
+      
+      html += '<div class="notification-toggle-status">';
+      html += '<div class="toggle-switch-modern' + (isNotificationOn ? ' is-active' : '') + 
+        '" onclick="toggleNotification()" role="button" aria-pressed="' + (isNotificationOn ? 'true' : 'false') + 
+        '" aria-label="' + (isNotificationOn ? 'Nonaktifkan' : 'Aktifkan') + ' Pengingat Menabung" tabindex="0">';
+      html += '<div class="toggle-track"></div>';
+      html += '<div class="toggle-thumb"></div>';
+      html += '</div>';
+      html += '<span class="toggle-status-text ' + (isNotificationOn ? 'on' : 'off') + '">' + 
+        (isNotificationOn ? 'ON' : 'OFF') + '</span>';
+      html += '</div>';
+      html += '</div>';
+      
+      // Show info if permission not granted yet
+      if (hasNotificationSupport && permission === 'default') {
+        html += '<div style="margin-top:8px;font-size:0.7rem;color:#88a0b8;">';
+        html += '💡 Klik toggle untuk meminta izin notifikasi browser.';
+        html += '</div>';
+      }
+    }
+    html += '</div>';
 
     // Data
     html += '<div class="glass" style="margin-bottom:12px;">';
@@ -1616,30 +1709,153 @@
     html += '</div>';
 
     // About
-    html += '<div class="glass">';
+    html += '<div class="glass" style="margin-bottom:12px;">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
-    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.2</p>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.3</p>';
     html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
     html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
     html +=
       '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>';
-    html += '</div></div>';
+    html += '</div>';
 
-     // ============================================================
-  // JHON FORUM ACCESS - DITAMBAHKAN
-  // ============================================================
-  html += '<div class="glass jhon-forum-card" style="margin-bottom:12px;">';
-  html += '<div class="jhon-forum-title">JHON FORUM ACCESS</div>';
-  html += '<div class="jhon-forum-divider"></div>';
-  html +=
-    '<p class="jhon-forum-desc">Bergabunglah dengan saluran komunikasi kami untuk pembaruan sistem & pelaporan bug.</p>';
-  html +=
-    '<a href="https://whatsapp.com/channel/0029VaLiUSS5q08hPj5mcH0m" target="_blank" rel="noopener noreferrer" class="jhon-forum-btn">Join Saluran</a>';
-  html += '</div>';
+    // JHON FORUM ACCESS
+    html += '<div class="jhon-forum-card">';
+    html += '<div class="jhon-forum-title">JHON FORUM ACCESS</div>';
+    html += '<div class="jhon-forum-divider"></div>';
+    html +=
+      '<p class="jhon-forum-desc">Bergabunglah dengan saluran komunikasi kami untuk pembaruan sistem & pelaporan bug.</p>';
+    html +=
+      '<a href="https://whatsapp.com/channel/0029VaLiUSS5q08hPj5mcH0m" target="_blank" rel="noopener noreferrer" class="jhon-forum-btn">Join Saluran</a>';
+    html += '</div>';
 
     mainContent.innerHTML = html;
   }
+
+  // ============================================================
+  // 15. NOTIFICATION FUNCTIONS - FIXED
+  // ============================================================
+
+  function toggleNotification() {
+    // Check if Notification API is supported
+    if (!('Notification' in window)) {
+      showToast('Browser tidak mendukung notifikasi', 'error');
+      return;
+    }
+
+    var permission = Notification.permission;
+    var currentState = localStorage.getItem(NOTIFICATION_KEY) === 'enabled';
+
+    // If permission denied, show message
+    if (permission === 'denied') {
+      showToast('❌ Notifikasi diblokir oleh browser. Aktifkan di pengaturan browser.', 'error');
+      renderSettings();
+      return;
+    }
+
+    // If permission not granted yet, request it
+    if (permission === 'default') {
+      requestNotificationPermission();
+      return;
+    }
+
+    // Permission is granted, toggle state
+    if (currentState) {
+      // Turn OFF
+      localStorage.removeItem(NOTIFICATION_KEY);
+      notificationEnabled = false;
+      if (reminderInterval) {
+        stopReminders();
+      }
+      showToast('🔕 Pengingat menabung dinonaktifkan', 'warning');
+      renderSettings();
+    } else {
+      // Turn ON
+      localStorage.setItem(NOTIFICATION_KEY, 'enabled');
+      notificationEnabled = true;
+      startReminders();
+      showToast('✓ Pengingat menabung berhasil diaktifkan', 'success');
+      renderSettings();
+    }
+  }
+
+  function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+      showToast('Browser tidak mendukung notifikasi', 'error');
+      return;
+    }
+
+    Notification.requestPermission().then(function(permission) {
+      if (permission === 'granted') {
+        localStorage.setItem(NOTIFICATION_KEY, 'enabled');
+        notificationEnabled = true;
+        startReminders();
+        showToast('✓ Pengingat menabung berhasil diaktifkan', 'success');
+        renderSettings();
+      } else if (permission === 'denied') {
+        showToast('❌ Izin notifikasi ditolak. Aktifkan di pengaturan browser.', 'error');
+        renderSettings();
+      } else {
+        showToast('Izin notifikasi tidak diberikan', 'error');
+      }
+    }).catch(function(err) {
+      console.error('Notification permission error:', err);
+      showToast('Gagal meminta izin notifikasi', 'error');
+    });
+  }
+
+  function startReminders() {
+    stopReminders();
+    if (!notificationEnabled) {
+      // Check if notification is enabled in localStorage
+      var savedState = localStorage.getItem(NOTIFICATION_KEY);
+      if (savedState === 'enabled' && Notification.permission === 'granted') {
+        notificationEnabled = true;
+      } else {
+        return;
+      }
+    }
+    reminderInterval = setInterval(function() {
+      checkReminders();
+    }, 60000);
+    checkReminders();
+  }
+
+  function stopReminders() {
+    if (reminderInterval) {
+      clearInterval(reminderInterval);
+      reminderInterval = null;
+    }
+  }
+
+  function checkReminders() {
+    if (!notificationEnabled) return;
+    if (Notification.permission !== 'granted') return;
+    
+    var activeGoals = getActiveGoals(appData.goals);
+    var closeGoals = activeGoals.filter(function(g) { return calculateProgress(g) >= 80; });
+    
+    closeGoals.forEach(function(goal) {
+      showToast('🎯 Kamu tinggal ' + formatCurrency(goal.target - goal.saved) +
+        ' lagi untuk mencapai target "' + goal.name + '"', 'warning');
+    });
+    
+    var today = getToday();
+    var todayTxs = appData.transactions.filter(function(t) { return t.date.startsWith(today); });
+    var hasSaving = todayTxs.some(function(t) { return t.type === 'saving'; });
+    
+    if (!hasSaving && appData.goals.length > 0) {
+      var lastReminder = localStorage.getItem('neonvault_last_reminder');
+      if (lastReminder !== today) {
+        localStorage.setItem('neonvault_last_reminder', today);
+        showToast('💰 Jangan lupa menabung hari ini!', 'info');
+      }
+    }
+  }
+
+  // ============================================================
+  // 16. THEME FUNCTIONS
+  // ============================================================
 
   function setTheme(theme) {
     appData.settings.theme = theme;
@@ -1655,52 +1871,9 @@
     document.body.classList.toggle('light-mode', !isDark);
   }
 
-  function toggleReminder(enabled) {
-    appData.settings.reminders = enabled;
-    saveData(appData);
-    if (enabled) {
-      startReminders();
-      showToast('🔔 Pengingat diaktifkan', 'success');
-    } else {
-      stopReminders();
-      showToast('🔕 Pengingat dinonaktifkan', 'success');
-    }
-  }
-
-  function startReminders() {
-    stopReminders();
-    reminderInterval = setInterval(function() {
-      checkReminders();
-    }, 60000);
-    checkReminders();
-  }
-
-  function stopReminders() {
-    if (reminderInterval) {
-      clearInterval(reminderInterval);
-      reminderInterval = null;
-    }
-  }
-
-  function checkReminders() {
-    if (!appData.settings.reminders) return;
-    var activeGoals = getActiveGoals(appData.goals);
-    var closeGoals = activeGoals.filter(function(g) { return calculateProgress(g) >= 80; });
-    closeGoals.forEach(function(goal) {
-      showToast('🎯 Kamu tinggal ' + formatCurrency(goal.target - goal.saved) +
-        ' lagi untuk mencapai target "' + goal.name + '"', 'warning');
-    });
-    var today = getToday();
-    var todayTxs = appData.transactions.filter(function(t) { return t.date.startsWith(today); });
-    var hasSaving = todayTxs.some(function(t) { return t.type === 'saving'; });
-    if (!hasSaving && appData.goals.length > 0) {
-      var lastReminder = localStorage.getItem('neonvault_last_reminder');
-      if (lastReminder !== today) {
-        localStorage.setItem('neonvault_last_reminder', today);
-        showToast('💰 Jangan lupa menabung hari ini!', 'info');
-      }
-    }
-  }
+  // ============================================================
+  // 17. BACKUP / RESTORE FUNCTIONS
+  // ============================================================
 
   function downloadBackup() {
     try {
@@ -1746,6 +1919,10 @@
     input.value = '';
   }
 
+  // ============================================================
+  // 18. RESET MODAL FUNCTIONS
+  // ============================================================
+
   function openResetModal() {
     var modal = document.createElement('div');
     modal.className = 'popup-overlay active';
@@ -1769,11 +1946,13 @@
   }
 
   function confirmReset() {
+    // Create backup before reset
     downloadBackup();
-    var newData = resetAllData();
-    if (newData) {
-      appData = newData;
-      renderCurrentPage();
+    
+    // Reset all data
+    var success = resetAllData();
+    
+    if (success) {
       closeModal('resetModal');
       showToast('🗑️ Semua data telah direset', 'warning');
     } else {
@@ -1782,10 +1961,15 @@
   }
 
   // ============================================================
-  // 14. RENDER CURRENT PAGE
+  // 19. RENDER CURRENT PAGE
   // ============================================================
 
   function renderCurrentPage() {
+    // Check if onboarding is active - don't render pages if onboarding is showing
+    if (onboarding && onboarding.classList.contains('active')) {
+      return;
+    }
+    
     switch (currentPage) {
       case 'dashboard':
         renderDashboard();
@@ -1831,28 +2015,30 @@
   }
 
   // ============================================================
-  // 15. NAVIGATION SETUP
+  // 20. NAVIGATION SETUP
   // ============================================================
 
   function setupNavigation() {
     document.querySelectorAll('.nav-item').forEach(function(item) {
       item.addEventListener('click', function() {
+        // Don't navigate if onboarding is active
+        if (onboarding && onboarding.classList.contains('active')) return;
         var page = this.dataset.page;
         currentGoalId = null;
         navigateTo(page);
       });
     });
 
-    // Expose navigation functions globally
     window.navigateTo = navigateTo;
     window.goBack = goBack;
+    window.toggleNotification = toggleNotification;
   }
 
   // ============================================================
-  // 16. STYLE FOR BACK BUTTON
+  // 21. STYLES INJECTION
   // ============================================================
 
-  function injectBackButtonStyles() {
+  function injectStyles() {
     var style = document.createElement('style');
     style.textContent = `
       .back-button {
@@ -1901,12 +2087,274 @@
           min-height: 40px;
         }
       }
+
+      /* JHON FORUM ACCESS */
+      .jhon-forum-card {
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(0, 229, 255, 0.12);
+        border-radius: clamp(18px, 2.5vw, 24px);
+        padding: clamp(16px, 2vw, 24px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 30px rgba(0, 229, 255, 0.03);
+        transition: 0.3s ease;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .jhon-forum-card:hover {
+        border-color: rgba(0, 229, 255, 0.3);
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 229, 255, 0.08);
+        transform: translateY(-2px);
+      }
+      .jhon-forum-title {
+        font-family: 'Orbitron', monospace;
+        font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+        font-weight: 700;
+        color: #00e5ff;
+        text-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+      .jhon-forum-divider {
+        width: 100%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.3), transparent);
+        margin: 6px 0 12px;
+      }
+      .jhon-forum-desc {
+        color: #b0c4de;
+        font-size: clamp(0.8rem, 1.2vw, 0.9rem);
+        line-height: 1.5;
+        margin-bottom: 14px;
+      }
+      .jhon-forum-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1.5px solid #00e5ff;
+        color: #00e5ff;
+        padding: clamp(10px, 1.5vw, 12px) clamp(24px, 3vw, 36px);
+        border-radius: 60px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 600;
+        font-size: clamp(0.85rem, 1.3vw, 1rem);
+        letter-spacing: 1px;
+        cursor: pointer;
+        transition: 0.25s ease;
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.12);
+        user-select: none;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        text-decoration: none;
+        width: 100%;
+        text-align: center;
+        min-height: 44px;
+      }
+      .jhon-forum-btn:hover {
+        background: rgba(0, 229, 255, 0.12);
+        box-shadow: 0 0 40px rgba(0, 229, 255, 0.3);
+        transform: scale(1.02);
+        color: #00e5ff;
+      }
+      .jhon-forum-btn:active {
+        transform: scale(0.97);
+      }
+      body.light-mode .jhon-forum-card {
+        background: rgba(255, 255, 255, 0.7);
+        border-color: rgba(0, 0, 0, 0.06);
+      }
+      body.light-mode .jhon-forum-title {
+        color: #7c4dff;
+        text-shadow: 0 0 30px rgba(124, 77, 255, 0.2);
+      }
+      body.light-mode .jhon-forum-divider {
+        background: linear-gradient(90deg, transparent, rgba(124, 77, 255, 0.2), transparent);
+      }
+      body.light-mode .jhon-forum-desc {
+        color: #4a4a6e;
+      }
+      body.light-mode .jhon-forum-btn {
+        border-color: #7c4dff;
+        color: #7c4dff;
+        box-shadow: 0 0 20px rgba(124, 77, 255, 0.12);
+      }
+      body.light-mode .jhon-forum-btn:hover {
+        background: rgba(124, 77, 255, 0.12);
+        box-shadow: 0 0 40px rgba(124, 77, 255, 0.3);
+        color: #7c4dff;
+      }
+      body.light-mode .jhon-forum-card:hover {
+        border-color: rgba(124, 77, 255, 0.3);
+      }
+
+      /* Notification Toggle */
+      .notification-toggle-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 0;
+        flex-wrap: wrap;
+      }
+      .notification-toggle-info {
+        flex: 1;
+        min-width: 140px;
+      }
+      .notification-toggle-info .toggle-label {
+        font-weight: 600;
+        font-size: clamp(0.9rem, 1.3vw, 1rem);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .notification-toggle-info .toggle-desc {
+        font-size: clamp(0.7rem, 1vw, 0.8rem);
+        color: #88a0b8;
+        margin-top: 2px;
+      }
+      .notification-toggle-status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      .toggle-switch-modern {
+        position: relative;
+        width: 52px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        cursor: pointer;
+        transition: 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        flex-shrink: 0;
+        touch-action: manipulation;
+      }
+      .toggle-switch-modern .toggle-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 14px;
+        transition: 0.3s ease;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .toggle-switch-modern .toggle-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #88a0b8;
+        transition: 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+      .toggle-switch-modern.is-active {
+        border-color: rgba(0, 229, 255, 0.3);
+      }
+      .toggle-switch-modern.is-active .toggle-track {
+        background: rgba(0, 229, 255, 0.15);
+      }
+      .toggle-switch-modern.is-active .toggle-thumb {
+        transform: translateX(24px);
+        background: #00e5ff;
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+      }
+      .toggle-switch-modern:hover {
+        border-color: rgba(0, 229, 255, 0.2);
+      }
+      .toggle-switch-modern.is-active:hover {
+        border-color: rgba(0, 229, 255, 0.4);
+      }
+      .toggle-status-text {
+        font-size: clamp(0.7rem, 1vw, 0.8rem);
+        font-weight: 600;
+        min-width: 36px;
+        text-align: center;
+        transition: 0.3s ease;
+      }
+      .toggle-status-text.off {
+        color: #88a0b8;
+      }
+      .toggle-status-text.on {
+        color: #00ff88;
+      }
+      .notification-permission-denied {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: rgba(255, 77, 109, 0.08);
+        border: 1px solid rgba(255, 77, 109, 0.15);
+        border-radius: 12px;
+        color: #ff4d6d;
+        font-size: clamp(0.75rem, 1vw, 0.85rem);
+      }
+      .notification-permission-denied .denied-icon {
+        font-size: 1.2rem;
+      }
+      body.light-mode .toggle-switch-modern {
+        background: rgba(0, 0, 0, 0.06);
+        border-color: rgba(0, 0, 0, 0.08);
+      }
+      body.light-mode .toggle-switch-modern .toggle-track {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      body.light-mode .toggle-switch-modern .toggle-thumb {
+        background: #6a6a8e;
+      }
+      body.light-mode .toggle-switch-modern.is-active {
+        border-color: rgba(124, 77, 255, 0.3);
+      }
+      body.light-mode .toggle-switch-modern.is-active .toggle-track {
+        background: rgba(124, 77, 255, 0.15);
+      }
+      body.light-mode .toggle-switch-modern.is-active .toggle-thumb {
+        background: #7c4dff;
+        box-shadow: 0 0 20px rgba(124, 77, 255, 0.3);
+      }
+      body.light-mode .toggle-status-text.off {
+        color: #6a6a8e;
+      }
+      body.light-mode .toggle-status-text.on {
+        color: #00a86b;
+      }
+      body.light-mode .notification-permission-denied {
+        background: rgba(231, 76, 60, 0.08);
+        border-color: rgba(231, 76, 60, 0.15);
+        color: #e74c3c;
+      }
+      @media (max-width: 480px) {
+        .notification-toggle-wrapper {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
+        }
+        .notification-toggle-status {
+          justify-content: flex-start;
+        }
+        .toggle-switch-modern {
+          width: 48px;
+          height: 26px;
+        }
+        .toggle-switch-modern .toggle-thumb {
+          width: 20px;
+          height: 20px;
+          top: 2px;
+          left: 2px;
+        }
+        .toggle-switch-modern.is-active .toggle-thumb {
+          transform: translateX(22px);
+        }
+      }
     `;
     document.head.appendChild(style);
   }
 
   // ============================================================
-  // 17. EXPOSE GLOBALLY
+  // 22. EXPOSE GLOBALLY
   // ============================================================
 
   window.openTransactionModal = openTransactionModal;
@@ -1928,21 +2376,27 @@
   window.confirmReset = confirmReset;
   window.navigateTo = navigateTo;
   window.goBack = goBack;
-  window.toggleReminder = toggleReminder;
+  window.toggleNotification = toggleNotification;
   window.setChartPeriod = setChartPeriod;
 
   // ============================================================
-  // 18. INITIALIZATION
+  // 23. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
+      // Load notification state
+      var savedNotification = localStorage.getItem(NOTIFICATION_KEY);
+      notificationEnabled = savedNotification === 'enabled';
+
+      // Load data
       appData = loadData();
       applyTheme(appData.settings.theme || 'dark');
 
-      // Inject back button styles
-      injectBackButtonStyles();
+      // Inject styles
+      injectStyles();
 
+      // Handle onboarding
       if (!appData.settings.onboardingComplete) {
         onboarding.classList.add('active');
         loadingScreen.classList.add('hidden');
@@ -1959,11 +2413,12 @@
         dashboard.classList.add('active');
         loadingScreen.classList.add('hidden');
         renderDashboard();
-        if (appData.settings.reminders) {
+        if (notificationEnabled && Notification.permission === 'granted') {
           startReminders();
         }
       }
 
+      // Onboarding start
       onboardingStart.addEventListener('click', function() {
         appData.settings.onboardingComplete = true;
         saveData(appData);
@@ -1974,6 +2429,7 @@
         }, 100);
       });
 
+      // Name popup start
       startBtn.addEventListener('click', function() {
         var name = nameInput.value.trim();
         if (!name) {
@@ -1986,7 +2442,7 @@
         namePopup.classList.remove('active');
         dashboard.classList.add('active');
         renderDashboard();
-        if (appData.settings.reminders) {
+        if (notificationEnabled && Notification.permission === 'granted') {
           startReminders();
         }
         showToast('Selamat datang, ' + name + '! ✦', 'success');
@@ -2020,7 +2476,7 @@
         }
       }
 
-      console.log('🚀 NEONVAULT V2.0.2 initialized successfully!');
+      console.log('🚀 NEONVAULT V2.0.3 initialized successfully!');
       console.log('📊 Data:', appData);
 
     } catch (e) {
