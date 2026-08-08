@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * app.js – NEONVAULT V2 - Fixed Navigation
- * Version: 2.0.1
+ * Version: 2.0.2
  * ============================================================
  */
 
@@ -411,7 +411,6 @@
 
   var appData = null;
   var currentPage = 'dashboard';
-  var previousPage = null;
   var currentGoalId = null;
   var transactionToUndo = null;
   var selectedColor = '#00e5ff';
@@ -465,41 +464,59 @@
   // 7. NAVIGATION SYSTEM
   // ============================================================
 
+  function goBack() {
+    if (pageHistory.length > 0) {
+      var last = pageHistory.pop();
+      currentPage = last.page;
+      currentGoalId = last.params || null;
+      
+      // Update browser history
+      try {
+        history.back();
+      } catch (e) {
+        // Fallback
+        renderCurrentPage();
+        updateNavButtons();
+      }
+      
+      renderCurrentPage();
+      updateNavButtons();
+    } else {
+      // If no history, go to dashboard
+      navigateTo('dashboard');
+    }
+  }
+
   function navigateTo(page, params) {
-    // Save current page to history
+    // Save current page to history (except when going back)
     if (currentPage && currentPage !== page) {
       pageHistory.push({ page: currentPage, params: currentGoalId });
       if (pageHistory.length > 20) pageHistory.shift();
     }
 
-    // Handle back navigation
-    if (page === 'back') {
-      if (pageHistory.length > 0) {
-        var last = pageHistory.pop();
-        page = last.page;
-        currentGoalId = last.params;
-      } else {
-        page = 'dashboard';
-        currentGoalId = null;
-      }
-    }
-
     currentPage = page;
-    previousPage = pageHistory.length > 0 ? pageHistory[pageHistory.length - 1]?.page : null;
+    if (params !== undefined) {
+      currentGoalId = params;
+    }
 
     // Update browser history
     try {
       var state = { page: page, goalId: currentGoalId };
-      history.pushState(state, '', '#' + page + (currentGoalId ? '/' + currentGoalId : ''));
-    } catch (e) {}
+      var url = '#' + page + (currentGoalId ? '/' + currentGoalId : '');
+      history.pushState(state, '', url);
+    } catch (e) {
+      // Silent fail
+    }
 
+    renderCurrentPage();
+    updateNavButtons();
+  }
+
+  function updateNavButtons() {
     // Update bottom nav
     document.querySelectorAll('.nav-item').forEach(function(item) {
-      item.classList.toggle('active', item.dataset.page === page);
+      item.classList.toggle('active', item.dataset.page === currentPage);
     });
-
-    // Render page
-    renderCurrentPage();
   }
 
   // Handle browser back
@@ -507,12 +524,21 @@
     if (e.state && e.state.page) {
       currentPage = e.state.page;
       currentGoalId = e.state.goalId || null;
+      
+      // Remove current page from history if it was added
+      if (pageHistory.length > 0 && pageHistory[pageHistory.length - 1].page === currentPage) {
+        pageHistory.pop();
+      }
+      
       renderCurrentPage();
+      updateNavButtons();
     } else {
       // Fallback: go to dashboard
       currentPage = 'dashboard';
       currentGoalId = null;
+      pageHistory = [];
       renderCurrentPage();
+      updateNavButtons();
     }
   });
 
@@ -736,8 +762,7 @@
 
     // Navigate to goal detail
     if (goal) {
-      currentGoalId = goal.id;
-      navigateTo('goalDetail');
+      navigateTo('goalDetail', goal.id);
     } else {
       navigateTo('goals');
     }
@@ -820,8 +845,8 @@
   // 10. RENDER FUNCTIONS
   // ============================================================
 
-  function renderBackButton(targetPage) {
-    return '<button class="back-button" onclick="navigateTo(\'back\')">← Kembali</button>';
+  function renderBackButton() {
+    return '<button class="back-button" onclick="window.goBack && window.goBack()">← Kembali</button>';
   }
 
   function renderDashboard() {
@@ -887,7 +912,7 @@
       activeGoals.forEach(function(g) {
         var progress = calculateProgress(g);
         var isCompleted = g.saved >= g.target;
-        html += '<div class="goal-item" onclick="navigateToGoalDetail(\'' + g.id + '\')" style="border-color:' + (g.color ||
+        html += '<div class="goal-item" onclick="navigateTo(\'goalDetail\', \'' + g.id + '\')" style="border-color:' + (g.color ||
           '#00e5ff') + ';">';
         html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
           .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
@@ -940,11 +965,6 @@
     mainContent.innerHTML = html;
   }
 
-  function navigateToGoalDetail(goalId) {
-    currentGoalId = goalId;
-    navigateTo('goalDetail');
-  }
-
   function renderGoalDetail() {
     var goal = appData.goals.find(function(g) { return g.id === currentGoalId; });
     if (!goal) {
@@ -962,7 +982,7 @@
     
     // Back button
     html += '<div style="margin-bottom:12px;">';
-    html += '<button class="back-button" onclick="navigateTo(\'back\')">← Kembali</button>';
+    html += renderBackButton();
     html += '</div>';
 
     // Goal Detail Card
@@ -1064,7 +1084,7 @@
         var remaining = Math.max(0, g.target - g.saved);
         html += '<div class="goal-card ' + (isCompleted ? 'completed' : '') +
           '" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.2)' : (g.color || '#00e5ff') +
-          '44') + ';cursor:pointer;" onclick="navigateToGoalDetail(\'' + g.id + '\')">';
+          '44') + ';cursor:pointer;" onclick="navigateTo(\'goalDetail\', \'' + g.id + '\')">';
         html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
         html += '<div><div style="font-size:1.8rem;">' + (g.icon || '🎯') +
           '</div><div class="goal-card-name">' + sanitize(g.name) + '</div></div>';
@@ -1599,7 +1619,7 @@
     html += '<div class="glass">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
-    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.1</p>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.2</p>';
     html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
     html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
     html +=
@@ -1621,11 +1641,6 @@
     var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia(
     '(prefers-color-scheme: dark)').matches);
     document.body.classList.toggle('light-mode', !isDark);
-    document.querySelectorAll('.settings-row .neon-btn').forEach(function(btn) {
-      var text = btn.textContent.trim();
-      btn.classList.toggle('active', text.includes(theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' :
-      'System'));
-    });
   }
 
   function toggleReminder(enabled) {
@@ -1818,7 +1833,7 @@
 
     // Expose navigation functions globally
     window.navigateTo = navigateTo;
-    window.navigateToGoalDetail = navigateToGoalDetail;
+    window.goBack = goBack;
   }
 
   // ============================================================
@@ -1849,6 +1864,7 @@
         -webkit-tap-highlight-color: transparent;
         min-height: 44px;
         min-width: 44px;
+        user-select: none;
       }
       .back-button:hover {
         background: rgba(0, 229, 255, 0.1);
@@ -1899,7 +1915,7 @@
   window.openResetModal = openResetModal;
   window.confirmReset = confirmReset;
   window.navigateTo = navigateTo;
-  window.navigateToGoalDetail = navigateToGoalDetail;
+  window.goBack = goBack;
   window.toggleReminder = toggleReminder;
   window.setChartPeriod = setChartPeriod;
 
@@ -1986,13 +2002,13 @@
         var parts = hash.replace('#', '').split('/');
         if (parts[0] === 'goalDetail' && parts[1]) {
           currentGoalId = parts[1];
-          navigateTo('goalDetail');
+          navigateTo('goalDetail', currentGoalId);
         } else if (parts[0]) {
           navigateTo(parts[0]);
         }
       }
 
-      console.log('🚀 NEONVAULT V2.0.1 initialized successfully!');
+      console.log('🚀 NEONVAULT V2.0.2 initialized successfully!');
       console.log('📊 Data:', appData);
 
     } catch (e) {
