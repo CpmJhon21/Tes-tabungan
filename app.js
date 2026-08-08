@@ -1,751 +1,1096 @@
-/* ============================================================
-   app.js – Main Application Controller
-   NEONVAULT V2
-   ============================================================ */
+/**
+ * ============================================================
+ * app.js – NEONVAULT V2 Main Application
+ * Version: 2.0.0
+ * Description: Personal Savings Manager with Cyberpunk Design
+ * ============================================================
+ */
 
-var App = {
-    data: null,
-    currentPage: 'dashboard',
-    filterType: 'all',
-    filterCategory: 'all',
-    filterSort: 'newest',
-    transactionToUndo: null,
-    chartPeriod: 6,
-    currentGoalId: null,
-    
-    init: function() {
-        try {
-            // Load data
-            this.loadData();
-            
-            // Check onboarding
-            if (!this.data.settings.onboardingComplete) {
-                this.showOnboarding();
-            } else if (!this.data.settings.userName) {
-                this.showNamePopup();
-            } else {
-                this.startApp();
-            }
-            
-            // Setup event listeners
-            this.setupEventListeners();
-            
-            // Clock
-            this.updateClock();
-            setInterval(function() { App.updateClock(); }, 1000);
-            
-            // Background
-            this.initBackground();
-            
-            // Mouse glow
-            if (!('ontouchstart' in window)) {
-                document.addEventListener('mousemove', function(e) {
-                    var glow = document.getElementById('mouseGlow');
-                    if (glow) {
-                        glow.style.left = e.clientX + 'px';
-                        glow.style.top = e.clientY + 'px';
-                    }
-                });
-            }
-            
-            // Close modals on outside click
-            document.querySelectorAll('.modal-overlay').forEach(function(el) {
-                el.addEventListener('click', function(e) {
-                    if (e.target === el) {
-                        el.classList.add('hidden');
-                    }
-                });
-            });
-            
-            // Bottom navigation
-            document.querySelectorAll('.nav-item').forEach(function(item) {
-                item.addEventListener('click', function() {
-                    var page = this.dataset.page;
-                    App.navigateTo(page);
-                });
-            });
-            
-            // Modal close buttons
-            document.querySelectorAll('.modal-close').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var modal = this.closest('.modal-overlay');
-                    if (modal) modal.classList.add('hidden');
-                });
-            });
-            
-            console.log('NEONVAULT V2 initialized!');
-            
-        } catch(e) {
-            console.error('Init error:', e);
-            // Force hide loading
-            document.getElementById('loadingScreen').classList.add('hidden');
-            document.getElementById('onboarding').classList.remove('hidden');
-        }
-    },
-    
-    loadData: function() {
-        var saved = StorageManager.getData();
-        if (!saved) {
-            saved = getDefaultData();
-            StorageManager.saveData(saved);
-        }
-        this.data = saved;
-        return this.data;
-    },
-    
-    saveData: function() {
-        if (!this.data) return false;
-        return StorageManager.saveData(this.data);
-    },
-    
-    showOnboarding: function() {
-        var onboarding = document.getElementById('onboarding');
-        if (!onboarding) return;
-        onboarding.classList.remove('hidden');
-        
-        document.getElementById('onboardingStart').addEventListener('click', function() {
-            onboarding.classList.add('hidden');
-            App.data.settings.onboardingComplete = true;
-            App.saveData();
-            App.showNamePopup();
-        });
-    },
-    
-    showNamePopup: function() {
-        var popup = document.getElementById('namePopup');
-        if (!popup) return;
-        popup.classList.remove('hidden');
-        
-        var input = document.getElementById('nameInput');
-        var btn = document.getElementById('startBtn');
-        
-        var start = function() {
-            var name = input.value.trim();
-            if (!name) {
-                UIRenderer.showToast('Masukkan nama terlebih dahulu', 'error');
-                input.focus();
-                return;
-            }
-            App.data.settings.userName = name;
-            App.saveData();
-            popup.classList.add('hidden');
-            App.startApp();
-            UIRenderer.showToast('Selamat datang, ' + name + '! ✦', 'success');
-        };
-        
-        btn.onclick = start;
-        input.onkeydown = function(e) { if (e.key === 'Enter') start(); };
-        input.focus();
-    },
-    
-    startApp: function() {
-        document.getElementById('loadingScreen').classList.add('hidden');
-        document.getElementById('dashboard').classList.add('active');
-        this.navigateTo('dashboard');
-    },
-    
-    navigateTo: function(page) {
-        this.currentPage = page;
-        
-        document.querySelectorAll('.nav-item').forEach(function(item) {
-            item.classList.toggle('active', item.dataset.page === page);
-        });
-        
-        switch(page) {
-            case 'dashboard':
-                UIRenderer.renderDashboard(this.data);
-                break;
-            case 'goals':
-                UIRenderer.renderGoals(this.data);
-                break;
-            case 'transactions':
-                UIRenderer.renderTransactions(this.data);
-                break;
-            case 'analytics':
-                UIRenderer.renderAnalytics(this.data);
-                break;
-            case 'settings':
-                UIRenderer.renderSettings(this.data);
-                break;
-        }
-    },
-    
-    openTransactionModal: function(type) {
-        type = type || 'income';
-        var modal = document.getElementById('transactionModal');
-        if (!modal) return;
-        
-        var titles = {
-            income: '➕ Tambah Pemasukan',
-            expense: '➖ Tambah Pengeluaran',
-            saving: '💰 Tambah Tabungan'
-        };
-        document.getElementById('modalTitle').textContent = titles[type] || titles.income;
-        document.getElementById('modalType').value = type;
-        document.getElementById('modalAmount').value = '';
-        document.getElementById('modalDesc').value = '';
-        document.getElementById('modalDate').textContent = formatDateTime(getCurrentDateTime());
-        
-        var goalSelect = document.getElementById('modalGoalSelect');
-        if (type === 'saving') {
-            goalSelect.classList.remove('hidden');
-            var select = document.getElementById('modalGoal');
-            select.innerHTML = '<option value="">Pilih Target Tabungan</option>' +
-                this.data.goals.filter(function(g) { return !isGoalCompleted(g); }).map(function(g) {
-                    return '<option value="' + g.id + '">' + (g.icon || '🎯') + ' ' + g.name + '</option>';
-                }).join('');
-        } else {
-            goalSelect.classList.add('hidden');
-        }
-        
-        modal.classList.remove('hidden');
-        setTimeout(function() { document.getElementById('modalAmount').focus(); }, 100);
-    },
-    
-    confirmTransaction: function() {
-        var amount = parseInt(document.getElementById('modalAmount').value);
-        var type = document.getElementById('modalType').value;
-        var category = document.getElementById('modalCategory').value;
-        var desc = document.getElementById('modalDesc').value.trim();
-        var goalId = document.getElementById('modalGoal')?.value || '';
-        
-        if (!amount || amount <= 0) {
-            UIRenderer.showToast('Nominal harus lebih dari 0', 'error');
-            return;
-        }
-        
-        var transaction = {
-            id: generateId(),
-            type: type,
-            amount: amount,
-            category: category,
-            desc: desc || (type === 'income' ? 'Pemasukan' : type === 'expense' ? 'Pengeluaran' : 'Tabungan'),
-            date: getCurrentDateTime(),
-            goalId: type === 'saving' ? goalId : ''
-        };
-        
-        this.data.transactions.push(transaction);
-        
-        if (type === 'saving' && goalId) {
-            var goal = this.data.goals.find(function(g) { return g.id === goalId; });
-            if (goal) {
-                goal.saved += amount;
-                goal.updatedAt = getCurrentDateTime();
-            }
-        }
-        
-        this.saveData();
-        document.getElementById('transactionModal').classList.add('hidden');
-        
-        this.transactionToUndo = transaction;
-        UIRenderer.showToast(
-            (type === 'income' ? '➕' : type === 'expense' ? '➖' : '💰') + ' Transaksi berhasil disimpan: ' + formatCurrency(amount),
-            'success',
-            function() { App.undoTransaction(); }
-        );
-        
-        this.refreshCurrentPage();
-    },
-    
-    undoTransaction: function() {
-        if (!this.transactionToUndo) return;
-        
-        var tx = this.transactionToUndo;
-        var index = this.data.transactions.findIndex(function(t) { return t.id === tx.id; });
-        
-        if (index !== -1) {
-            this.data.transactions.splice(index, 1);
-            
-            if (tx.type === 'saving' && tx.goalId) {
-                var goal = this.data.goals.find(function(g) { return g.id === tx.goalId; });
-                if (goal) {
-                    goal.saved -= tx.amount;
-                    goal.updatedAt = getCurrentDateTime();
-                }
-            }
-            
-            this.saveData();
-            this.transactionToUndo = null;
-            UIRenderer.showToast('Transaksi dibatalkan', 'warning');
-            this.refreshCurrentPage();
-        }
-    },
-    
-    openGoalModal: function(goalId) {
-        goalId = goalId || null;
-        var modal = document.getElementById('goalModal');
-        if (!modal) return;
-        
-        var isEdit = !!goalId;
-        var goal = isEdit ? this.data.goals.find(function(g) { return g.id === goalId; }) : null;
-        
-        document.getElementById('goalModalTitle').textContent = isEdit ? '✏️ Edit Target' : '🎯 Target Baru';
-        document.getElementById('goalName').value = goal?.name || '';
-        document.getElementById('goalTarget').value = goal?.target || '';
-        document.getElementById('goalDeadline').value = goal?.deadline || '';
-        document.getElementById('goalNote').value = goal?.note || '';
-        
-        document.querySelectorAll('.color-option').forEach(function(el) {
-            el.classList.toggle('active', el.dataset.color === (goal?.color || '#00e5ff'));
-        });
-        
-        this.currentGoalId = goalId;
-        modal.classList.remove('hidden');
-        setTimeout(function() { document.getElementById('goalName').focus(); }, 100);
-    },
-    
-    confirmGoal: function() {
-        var name = document.getElementById('goalName').value.trim();
-        var target = parseInt(document.getElementById('goalTarget').value);
-        var deadline = document.getElementById('goalDeadline').value;
-        var note = document.getElementById('goalNote').value.trim();
-        var colorEl = document.querySelector('.color-option.active');
-        var color = colorEl?.dataset.color || '#00e5ff';
-        
-        if (!name) {
-            UIRenderer.showToast('Masukkan nama target', 'error');
-            return;
-        }
-        if (!target || target <= 0) {
-            UIRenderer.showToast('Target nominal harus lebih dari 0', 'error');
-            return;
-        }
-        
-        var isEdit = !!this.currentGoalId;
-        
-        if (isEdit) {
-            var goal = this.data.goals.find(function(g) { return g.id === App.currentGoalId; });
-            if (goal) {
-                goal.name = name;
-                goal.target = target;
-                goal.deadline = deadline;
-                goal.note = note;
-                goal.color = color;
-                goal.updatedAt = getCurrentDateTime();
-                UIRenderer.showToast('✅ Target berhasil diupdate', 'success');
-            }
-        } else {
-            var newGoal = {
-                id: generateId(),
-                name: name,
-                target: target,
-                saved: 0,
-                deadline: deadline,
-                note: note,
-                color: color,
-                icon: '🎯',
-                createdAt: getCurrentDateTime(),
-                updatedAt: getCurrentDateTime()
-            };
-            this.data.goals.push(newGoal);
-            UIRenderer.showToast('🎯 Target berhasil dibuat!', 'success');
-        }
-        
-        this.saveData();
-        document.getElementById('goalModal').classList.add('hidden');
-        this.currentGoalId = null;
-        this.refreshCurrentPage();
-    },
-    
-    deleteGoal: function(goalId) {
-        if (!confirm('Yakin ingin menghapus target ini?')) return;
-        
-        this.data.goals = this.data.goals.filter(function(g) { return g.id !== goalId; });
-        this.saveData();
-        UIRenderer.showToast('🗑️ Target dihapus', 'warning');
-        this.refreshCurrentPage();
-    },
-    
-    openGoalAddModal: function(goalId) {
-        var modal = document.getElementById('goalAddModal');
-        if (!modal) return;
-        
-        var goal = this.data.goals.find(function(g) { return g.id === goalId; });
-        if (!goal) return;
-        
-        document.getElementById('goalAddName').textContent = 'Target: ' + (goal.icon || '🎯') + ' ' + goal.name;
-        document.getElementById('goalAddAmount').value = '';
-        document.getElementById('goalAddNote').value = '';
-        this.currentGoalId = goalId;
-        
-        modal.classList.remove('hidden');
-        setTimeout(function() { document.getElementById('goalAddAmount').focus(); }, 100);
-    },
-    
-    confirmGoalAdd: function() {
-        var amount = parseInt(document.getElementById('goalAddAmount').value);
-        var note = document.getElementById('goalAddNote').value.trim();
-        
-        if (!amount || amount <= 0) {
-            UIRenderer.showToast('Nominal harus lebih dari 0', 'error');
-            return;
-        }
-        
-        var goal = this.data.goals.find(function(g) { return g.id === App.currentGoalId; });
-        if (!goal) {
-            UIRenderer.showToast('Target tidak ditemukan', 'error');
-            return;
-        }
-        
-        goal.saved += amount;
-        goal.updatedAt = getCurrentDateTime();
-        
-        this.data.transactions.push({
-            id: generateId(),
-            type: 'saving',
-            amount: amount,
-            category: 'savings',
-            desc: note || 'Tabungan ' + goal.name,
-            date: getCurrentDateTime(),
-            goalId: goal.id
-        });
-        
-        this.saveData();
-        document.getElementById('goalAddModal').classList.add('hidden');
-        UIRenderer.showToast('💰 ' + formatCurrency(amount) + ' ditambahkan ke ' + goal.name, 'success');
-        this.refreshCurrentPage();
-    },
-    
-    filterTransactions: function(type) {
-        var searchInput = document.getElementById('txSearchInput');
-        var categoryFilter = document.getElementById('txCategoryFilter');
-        var sortFilter = document.getElementById('txSortFilter');
-        
-        if (type) {
-            this.filterType = type;
-            document.querySelectorAll('.filter-btn[data-filter]').forEach(function(btn) {
-                btn.classList.toggle('active', btn.dataset.filter === type);
-            });
-        }
-        
-        this.filterCategory = categoryFilter?.value || 'all';
-        this.filterSort = sortFilter?.value || 'newest';
-        var query = searchInput?.value.toLowerCase() || '';
-        
-        var filtered = this.data.transactions.slice();
-        
-        if (this.filterType !== 'all') {
-            filtered = filtered.filter(function(t) { return t.type === App.filterType; });
-        }
-        
-        if (this.filterCategory !== 'all') {
-            filtered = filtered.filter(function(t) { return t.category === App.filterCategory; });
-        }
-        
-        if (query) {
-            filtered = filtered.filter(function(t) {
-                var desc = (t.desc || '').toLowerCase();
-                var cat = getCategoryName(t.category).toLowerCase();
-                return desc.includes(query) || cat.includes(query) || t.amount.toString().includes(query);
-            });
-        }
-        
-        switch(this.filterSort) {
-            case 'newest':
-                filtered.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
-                break;
-            case 'oldest':
-                filtered.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
-                break;
-            case 'highest':
-                filtered.sort(function(a, b) { return b.amount - a.amount; });
-                break;
-            case 'lowest':
-                filtered.sort(function(a, b) { return a.amount - b.amount; });
-                break;
-        }
-        
-        var container = document.getElementById('transactionsList');
-        if (!container) return;
-        
-        var currency = this.data.settings.currency || 'IDR';
-        var goals = this.data.goals || [];
-        
-        if (filtered.length === 0) {
-            container.innerHTML = 
-                '<div class="empty-state glass" style="padding:30px 20px;">' +
-                    '<div class="empty-icon">📊</div>' +
-                    '<div class="empty-title">Tidak ada transaksi</div>' +
-                    '<div class="empty-desc">Coba ubah filter atau tambahkan transaksi baru.</div>' +
-                '</div>';
-            return;
-        }
-        
-        container.innerHTML = filtered.map(function(t) {
-            return UIRenderer.renderTransactionFull(t, currency, goals);
-        }).join('');
-    },
-    
-    updateChartPeriod: function(type, months) {
-        this.chartPeriod = months;
-        document.querySelectorAll('[data-chart="' + type + '"]').forEach(function(btn) {
-            var text = btn.textContent.trim();
-            btn.classList.toggle('active', text.includes(months));
-        });
-        this.navigateTo('analytics');
-    },
-    
-    setTheme: function(theme) {
-        this.data.settings.theme = theme;
-        this.saveData();
-        this.applyTheme(theme);
-        this.refreshCurrentPage();
-    },
-    
-    applyTheme: function(theme) {
-        var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.body.classList.toggle('light-mode', !isDark);
-    },
-    
-    setCurrency: function(code) {
-        this.data.settings.currency = code;
-        this.saveData();
-        this.refreshCurrentPage();
-        UIRenderer.showToast('Mata uang diubah ke ' + code, 'success');
-    },
-    
-    toggleReminders: function(enabled) {
-        this.data.settings.reminders = enabled;
-        this.saveData();
-        UIRenderer.showToast(enabled ? '🔔 Pengingat diaktifkan' : '🔕 Pengingat dinonaktifkan', 'success');
-    },
-    
-    downloadBackup: function() {
-        var data = StorageManager.exportData();
-        if (!data) {
-            UIRenderer.showToast('Gagal membuat backup', 'error');
-            return;
-        }
-        
-        var blob = new Blob([data], { type: 'application/json' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'neonvault_backup_' + getToday() + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        UIRenderer.showToast('📥 Backup berhasil didownload', 'success');
-    },
-    
-    restoreBackup: function(input) {
-        var file = input.files[0];
-        if (!file) return;
-        
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                var success = StorageManager.importData(e.target.result);
-                if (success) {
-                    App.loadData();
-                    App.refreshCurrentPage();
-                    UIRenderer.showToast('📤 Backup berhasil dipulihkan', 'success');
-                } else {
-                    UIRenderer.showToast('Format backup tidak valid', 'error');
-                }
-            } catch (err) {
-                UIRenderer.showToast('Gagal restore backup', 'error');
-                console.error(err);
-            }
-        };
-        reader.readAsText(file);
-        input.value = '';
-    },
-    
-    openResetModal: function() {
-        var modal = document.getElementById('resetModal');
-        if (!modal) return;
-        
-        document.getElementById('resetConfirmInput').value = '';
-        document.getElementById('resetConfirmBtn').disabled = true;
-        modal.classList.remove('hidden');
-        
-        var input = document.getElementById('resetConfirmInput');
-        input.oninput = function() {
-            document.getElementById('resetConfirmBtn').disabled = this.value.toUpperCase() !== 'HAPUS';
-        };
-        
-        document.getElementById('resetConfirmBtn').onclick = function() {
-            App.resetAllData();
-        };
-    },
-    
-    resetAllData: function() {
-        var backup = StorageManager.exportData();
-        if (backup) {
-            var blob = new Blob([backup], { type: 'application/json' });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = 'neonvault_backup_before_reset_' + getToday() + '.json';
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        var success = StorageManager.resetData();
-        if (success) {
-            this.loadData();
-            document.getElementById('resetModal').classList.add('hidden');
-            UIRenderer.showToast('🗑️ Semua data telah direset', 'warning');
-            this.navigateTo('dashboard');
-        } else {
-            UIRenderer.showToast('Gagal reset data', 'error');
-        }
-    },
-    
-    refreshCurrentPage: function() {
-        this.navigateTo(this.currentPage);
-    },
-    
-    updateClock: function() {
-        try {
-            var now = new Date();
-            var clock = document.getElementById('realTimeClock');
-            var date = document.getElementById('realTimeDate');
-            if (clock) {
-                clock.textContent = now.toLocaleTimeString('id-ID', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-            }
-            if (date) {
-                date.textContent = now.toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                });
-            }
-        } catch(e) {}
-    },
-    
-    initBackground: function() {
-        var canvas = document.getElementById('bgCanvas');
-        if (!canvas) return;
-        
-        var ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        var w, h;
-        var resize = function() {
-            w = canvas.width = window.innerWidth;
-            h = canvas.height = window.innerHeight;
-        };
-        resize();
-        window.addEventListener('resize', resize);
-        
-        var particles = [];
-        var count = Math.min(40, Math.floor(window.innerWidth / 15));
-        for (var i = 0; i < count; i++) {
-            particles.push({
-                x: Math.random() * w,
-                y: Math.random() * h,
-                vx: (Math.random() - 0.5) * 0.2,
-                vy: (Math.random() - 0.5) * 0.2,
-                r: Math.random() * 2 + 0.5,
-                alpha: Math.random() * 0.3 + 0.05
-            });
-        }
-        
-        var draw = function() {
-            ctx.clearRect(0, 0, w, h);
-            
-            // Grid
-            ctx.strokeStyle = 'rgba(0,229,255,0.02)';
-            ctx.lineWidth = 0.5;
-            var step = 60;
-            for (var x = 0; x < w; x += step) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, h);
-                ctx.stroke();
-            }
-            for (var y = 0; y < h; y += step) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(w, y);
-                ctx.stroke();
-            }
-            
-            // Particles
-            particles.forEach(function(p) {
-                p.x += p.vx;
-                p.y += p.vy;
-                if (p.x < 0) p.x = w;
-                if (p.x > w) p.x = 0;
-                if (p.y < 0) p.y = h;
-                if (p.y > h) p.y = 0;
-                
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
-                ctx.fillStyle = 'rgba(0,229,255,' + p.alpha + ')';
-                ctx.fill();
-            });
-            
-            requestAnimationFrame(draw);
-        };
-        draw();
-    },
-    
-    setupEventListeners: function() {
-        // Transaction modal
-        document.getElementById('modalConfirmBtn')?.addEventListener('click', function() { App.confirmTransaction(); });
-        document.getElementById('modalType')?.addEventListener('change', function(e) {
-            var goalSelect = document.getElementById('modalGoalSelect');
-            if (e.target.value === 'saving') {
-                goalSelect.classList.remove('hidden');
-            } else {
-                goalSelect.classList.add('hidden');
-            }
-        });
-        
-        // Goal modal
-        document.getElementById('goalConfirmBtn')?.addEventListener('click', function() { App.confirmGoal(); });
-        document.getElementById('goalAddConfirmBtn')?.addEventListener('click', function() { App.confirmGoalAdd(); });
-        
-        // Color options
-        document.querySelectorAll('.color-option').forEach(function(el) {
-            el.addEventListener('click', function() {
-                document.querySelectorAll('.color-option').forEach(function(b) { b.classList.remove('active'); });
-                this.classList.add('active');
-            });
-        });
-        
-        // Settings modal
-        document.getElementById('settingsToggle')?.addEventListener('click', function() {
-            document.getElementById('settingsModal').classList.remove('hidden');
-        });
-        
-        document.querySelectorAll('#settingsModal .modal-close').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                document.getElementById('settingsModal').classList.add('hidden');
-            });
-        });
-        
-        document.getElementById('currencySelect')?.addEventListener('change', function(e) {
-            App.setCurrency(e.target.value);
-        });
-        
-        document.getElementById('reminderToggle')?.addEventListener('change', function(e) {
-            App.toggleReminders(e.target.checked);
-        });
-        
-        document.getElementById('backupBtn')?.addEventListener('click', function() { App.downloadBackup(); });
-        document.getElementById('restoreBtn')?.addEventListener('click', function() {
-            document.getElementById('restoreFileInput').click();
-        });
-        document.getElementById('restoreFileInput')?.addEventListener('change', function() {
-            App.restoreBackup(this);
-        });
-        document.getElementById('resetBtn')?.addEventListener('click', function() { App.openResetModal(); });
+(function() {
+  'use strict';
+
+  // ============================================================
+  // 1. HELPERS & UTILITIES
+  // ============================================================
+
+  function generateId() {
+    return Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 6);
+  }
+
+  function formatCurrency(amount) {
+    return 'Rp ' + Number(amount).toLocaleString('id-ID');
+  }
+
+  function getToday() {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  function getCurrentDateTime() {
+    return new Date().toISOString();
+  }
+
+  function formatDate(dateStr) {
+    try {
+      var d = new Date(dateStr);
+      return d.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch (e) {
+      return dateStr;
     }
-};
+  }
 
-// ============================================================
-// START APP
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    App.init();
-});
+  function formatTime(dateStr) {
+    try {
+      var d = new Date(dateStr);
+      return d.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function formatDateTime(dateStr) {
+    return formatDate(dateStr) + ' · ' + formatTime(dateStr);
+  }
+
+  function getCategoryIcon(cat) {
+    var icons = {
+      food: '🍔',
+      transport: '🚗',
+      shopping: '🛒',
+      salary: '💼',
+      bonus: '🎁',
+      home: '🏠',
+      education: '🎓',
+      entertainment: '🎮',
+      savings: '💰',
+      other: '📦'
+    };
+    return icons[cat] || '📦';
+  }
+
+  function getCategoryName(cat) {
+    var names = {
+      food: 'Makanan',
+      transport: 'Transportasi',
+      shopping: 'Belanja',
+      salary: 'Gaji',
+      bonus: 'Bonus',
+      home: 'Rumah',
+      education: 'Pendidikan',
+      entertainment: 'Hiburan',
+      savings: 'Tabungan',
+      other: 'Lainnya'
+    };
+    return names[cat] || 'Lainnya';
+  }
+
+  function sanitize(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // ============================================================
+  // 2. FINANCE CALCULATIONS
+  // ============================================================
+
+  function getTotalIncome(txs) {
+    return txs.filter(function(t) { return t.type === 'income'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+  }
+
+  function getTotalExpense(txs) {
+    return txs.filter(function(t) { return t.type === 'expense'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+  }
+
+  function getTotalSaving(txs) {
+    return txs.filter(function(t) { return t.type === 'saving'; })
+      .reduce(function(s, t) { return s + t.amount; }, 0);
+  }
+
+  function getTotalBalance(txs) {
+    var balance = 0;
+    txs.forEach(function(t) {
+      if (t.type === 'income') balance += t.amount;
+      else if (t.type === 'expense') balance -= t.amount;
+    });
+    return balance;
+  }
+
+  function getTotalGoalSavings(goals) {
+    return goals.reduce(function(s, g) { return s + g.saved; }, 0);
+  }
+
+  function getActiveGoals(goals) {
+    return goals.filter(function(g) { return g.saved < g.target; });
+  }
+
+  function getCompletedGoals(goals) {
+    return goals.filter(function(g) { return g.saved >= g.target; });
+  }
+
+  function calculateProgress(goal) {
+    if (!goal || goal.target <= 0) return 0;
+    return Math.min(100, (goal.saved / goal.target) * 100);
+  }
+
+  // ============================================================
+  // 3. STORAGE MANAGEMENT
+  // ============================================================
+
+  var STORAGE_KEY = 'neonvault_data_v2';
+
+  function getDefaultData() {
+    return {
+      version: 2,
+      settings: {
+        theme: 'dark',
+        currency: 'IDR',
+        reminders: true,
+        onboardingComplete: false,
+        userName: ''
+      },
+      goals: [],
+      transactions: []
+    };
+  }
+
+  function loadData() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        var def = getDefaultData();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
+        return def;
+      }
+      var data = JSON.parse(raw);
+      if (!data.settings) data.settings = getDefaultData().settings;
+      if (!data.goals) data.goals = [];
+      if (!data.transactions) data.transactions = [];
+      return data;
+    } catch (e) {
+      var def = getDefaultData();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
+      return def;
+    }
+  }
+
+  function saveData(data) {
+    try {
+      data.version = 2;
+      data.lastSaved = getCurrentDateTime();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return true;
+    } catch (e) {
+      console.error('Save error:', e);
+      return false;
+    }
+  }
+
+  function resetAllData() {
+    try {
+      var def = getDefaultData();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
+      return def;
+    } catch (e) {
+      console.error('Reset error:', e);
+      return null;
+    }
+  }
+
+  function exportData() {
+    try {
+      var data = loadData();
+      return JSON.stringify({
+        version: 2,
+        exportedAt: getCurrentDateTime(),
+        data: data
+      }, null, 2);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function importData(jsonStr) {
+    try {
+      var imported = JSON.parse(jsonStr);
+      if (imported.data && imported.data.transactions) {
+        return saveData(imported.data);
+      }
+      if (imported.transactions && imported.goals) {
+        return saveData(imported);
+      }
+      return false;
+    } catch (e) {
+      console.error('Import error:', e);
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 4. APPLICATION STATE
+  // ============================================================
+
+  var appData = null;
+  var currentPage = 'dashboard';
+  var transactionToUndo = null;
+  var selectedColor = '#00e5ff';
+
+  // ============================================================
+  // 5. DOM REFS
+  // ============================================================
+
+  var loadingScreen = document.getElementById('loadingScreen');
+  var onboarding = document.getElementById('onboarding');
+  var onboardingStart = document.getElementById('onboardingStart');
+  var namePopup = document.getElementById('namePopup');
+  var nameInput = document.getElementById('nameInput');
+  var startBtn = document.getElementById('startBtn');
+  var dashboard = document.getElementById('dashboard');
+  var mainContent = document.getElementById('mainContent');
+  var toastContainer = document.getElementById('toastContainer');
+  var clockEl = document.getElementById('realTimeClock');
+  var dateEl = document.getElementById('realTimeDate');
+  var settingsToggle = document.getElementById('settingsToggle');
+
+  // ============================================================
+  // 6. TOAST NOTIFICATION
+  // ============================================================
+
+  function showToast(message, type, undoCallback) {
+    type = type || 'success';
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.innerHTML = '<span>' + message + '</span>' +
+      (undoCallback ? '<button class="toast-undo" onclick="window._undoCallback && window._undoCallback()">UNDO</button>' :
+        '');
+
+    if (undoCallback) {
+      window._undoCallback = undoCallback;
+    }
+
+    toastContainer.appendChild(toast);
+
+    setTimeout(function() {
+      toast.classList.add('removing');
+      setTimeout(function() {
+        if (toast.parentNode) toast.remove();
+        window._undoCallback = null;
+      }, 300);
+    }, 3000);
+  }
+
+  // ============================================================
+  // 7. MODAL FUNCTIONS
+  // ============================================================
+
+  function closeModal(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode) {
+      el.remove();
+    }
+  }
+
+  function openTransactionModal(type) {
+    type = type || 'income';
+    var titles = {
+      income: '➕ Tambah Pemasukan',
+      expense: '➖ Tambah Pengeluaran',
+      saving: '💰 Tambah Tabungan'
+    };
+
+    var modal = document.createElement('div');
+    modal.className = 'popup-overlay active';
+    modal.id = 'transactionModal';
+    modal.innerHTML =
+      '<div class="popup-glass">' +
+      '<button class="modal-close" onclick="closeModal(\'transactionModal\')">✕</button>' +
+      '<div class="popup-title">' + (titles[type] || titles.income) + '</div>' +
+      '<input type="number" id="modalAmount" placeholder="Nominal" min="1" step="1" />' +
+      '<select id="modalCategory">' +
+      '<option value="food">🍔 Makanan</option>' +
+      '<option value="transport">🚗 Transportasi</option>' +
+      '<option value="shopping">🛒 Belanja</option>' +
+      '<option value="salary">💼 Gaji</option>' +
+      '<option value="bonus">🎁 Bonus</option>' +
+      '<option value="home">🏠 Rumah</option>' +
+      '<option value="education">🎓 Pendidikan</option>' +
+      '<option value="entertainment">🎮 Hiburan</option>' +
+      '<option value="savings">💰 Tabungan</option>' +
+      '<option value="other">📦 Lainnya</option>' +
+      '</select>' +
+      (type === 'saving' ? '<select id="modalGoal"><option value="">Pilih Target</option>' +
+        appData.goals.filter(function(g) { return g.saved < g.target; }).map(function(g) {
+          return '<option value="' + g.id + '">' + (g.icon || '🎯') + ' ' + sanitize(g.name) +
+          '</option>';
+        }).join('') + '</select>' : '') +
+      '<input type="text" id="modalDesc" placeholder="Catatan (opsional)" maxlength="100" />' +
+      '<div style="color:#88a0b8;margin-bottom:12px;font-size:0.85rem;">📅 ' + formatDateTime(
+        getCurrentDateTime()) + '</div>' +
+      '<button class="neon-btn full" onclick="confirmTransaction(\'' + type + '\')">Simpan Transaksi</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'transactionModal\')">Batal</button>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    setTimeout(function() {
+      var el = document.getElementById('modalAmount');
+      if (el) el.focus();
+    }, 100);
+  }
+
+  function confirmTransaction(type) {
+    var amount = parseInt(document.getElementById('modalAmount').value);
+    var category = document.getElementById('modalCategory').value;
+    var desc = document.getElementById('modalDesc').value.trim();
+    var goalId = document.getElementById('modalGoal')?.value || '';
+
+    if (!amount || amount <= 0) {
+      showToast('Nominal harus lebih dari 0', 'error');
+      return;
+    }
+
+    var tx = {
+      id: generateId(),
+      type: type,
+      amount: amount,
+      category: category,
+      desc: desc || (type === 'income' ? 'Pemasukan' : type === 'expense' ? 'Pengeluaran' : 'Tabungan'),
+      date: getCurrentDateTime(),
+      goalId: type === 'saving' ? goalId : ''
+    };
+
+    appData.transactions.push(tx);
+
+    if (type === 'saving' && goalId) {
+      var goal = appData.goals.find(function(g) { return g.id === goalId; });
+      if (goal) goal.saved += amount;
+    }
+
+    saveData(appData);
+    closeModal('transactionModal');
+
+    transactionToUndo = tx;
+    showToast(
+      (type === 'income' ? '➕' : type === 'expense' ? '➖' : '💰') + ' Transaksi berhasil: ' + formatCurrency(amount),
+      'success',
+      function() { undoTransaction(); }
+    );
+
+    renderCurrentPage();
+  }
+
+  function undoTransaction() {
+    if (!transactionToUndo) return;
+    var tx = transactionToUndo;
+    var idx = appData.transactions.findIndex(function(t) { return t.id === tx.id; });
+
+    if (idx !== -1) {
+      appData.transactions.splice(idx, 1);
+
+      if (tx.type === 'saving' && tx.goalId) {
+        var goal = appData.goals.find(function(g) { return g.id === tx.goalId; });
+        if (goal) goal.saved -= tx.amount;
+      }
+
+      saveData(appData);
+      transactionToUndo = null;
+      showToast('Transaksi dibatalkan', 'warning');
+      renderCurrentPage();
+    }
+  }
+
+  // ============================================================
+  // 8. GOAL FUNCTIONS
+  // ============================================================
+
+  function openGoalModal(goalId) {
+    var isEdit = !!goalId;
+    var goal = isEdit ? appData.goals.find(function(g) { return g.id === goalId; }) : null;
+
+    var modal = document.createElement('div');
+    modal.className = 'popup-overlay active';
+    modal.id = 'goalModal';
+    modal.innerHTML =
+      '<div class="popup-glass">' +
+      '<button class="modal-close" onclick="closeModal(\'goalModal\')">✕</button>' +
+      '<div class="popup-title">' + (isEdit ? '✏️ Edit Target' : '🎯 Target Baru') + '</div>' +
+      '<input type="text" id="goalName" placeholder="Nama Target" value="' + (goal ? sanitize(goal.name) : '') +
+      '" maxlength="50" />' +
+      '<input type="number" id="goalTarget" placeholder="Target Nominal" value="' + (goal ? goal.target : '') +
+      '" min="1" step="1" />' +
+      '<input type="date" id="goalDeadline" value="' + (goal ? goal.deadline || '' : '') + '" />' +
+      '<input type="text" id="goalNote" placeholder="Catatan (opsional)" value="' + (goal ? sanitize(goal.note) :
+        '') + '" maxlength="100" />' +
+      '<div style="margin:8px 0 12px;text-align:left;">' +
+      '<label style="color:#88a0b8;font-size:0.85rem;display:block;margin-bottom:6px;">Warna Target</label>' +
+      '<div class="color-options">' +
+      ['#00e5ff', '#7c4dff', '#00ff88', '#ff6b6b', '#ffd93d', '#6bcbff', '#ff8a5c', '#a8e6cf'].map(function(c) {
+        return '<button class="color-opt' + (goal && goal.color === c ? ' active' : '') +
+          '" data-color="' + c + '" style="background:' + c + ';" onclick="selectColor(this)"></button>';
+      }).join('') +
+      '</div>' +
+      '</div>' +
+      '<button class="neon-btn full" onclick="confirmGoal(\'' + (goalId || '') + '\')">' + (isEdit ?
+        'Update Target' : 'Simpan Target') + '</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'goalModal\')">Batal</button>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    setTimeout(function() {
+      var el = document.getElementById('goalName');
+      if (el) el.focus();
+    }, 100);
+  }
+
+  function selectColor(el) {
+    document.querySelectorAll('.color-opt').forEach(function(b) {
+      b.classList.remove('active');
+    });
+    el.classList.add('active');
+    selectedColor = el.dataset.color;
+  }
+
+  function confirmGoal(goalId) {
+    var name = document.getElementById('goalName').value.trim();
+    var target = parseInt(document.getElementById('goalTarget').value);
+    var deadline = document.getElementById('goalDeadline').value;
+    var note = document.getElementById('goalNote').value.trim();
+
+    if (!name) {
+      showToast('Masukkan nama target', 'error');
+      return;
+    }
+    if (!target || target <= 0) {
+      showToast('Target nominal harus lebih dari 0', 'error');
+      return;
+    }
+
+    if (goalId) {
+      var goal = appData.goals.find(function(g) { return g.id === goalId; });
+      if (goal) {
+        goal.name = name;
+        goal.target = target;
+        goal.deadline = deadline;
+        goal.note = note;
+        goal.color = selectedColor;
+        goal.updatedAt = getCurrentDateTime();
+        showToast('✅ Target diupdate', 'success');
+      }
+    } else {
+      appData.goals.push({
+        id: generateId(),
+        name: name,
+        target: target,
+        saved: 0,
+        deadline: deadline,
+        note: note,
+        color: selectedColor,
+        icon: '🎯',
+        createdAt: getCurrentDateTime(),
+        updatedAt: getCurrentDateTime()
+      });
+      showToast('🎯 Target dibuat!', 'success');
+    }
+
+    saveData(appData);
+    closeModal('goalModal');
+    renderCurrentPage();
+  }
+
+  function deleteGoal(goalId) {
+    if (!confirm('Yakin ingin menghapus target ini?')) return;
+    appData.goals = appData.goals.filter(function(g) { return g.id !== goalId; });
+    saveData(appData);
+    showToast('🗑️ Target dihapus', 'warning');
+    renderCurrentPage();
+  }
+
+  function openGoalAddModal(goalId) {
+    var goal = appData.goals.find(function(g) { return g.id === goalId; });
+    if (!goal) return;
+
+    var modal = document.createElement('div');
+    modal.className = 'popup-overlay active';
+    modal.id = 'goalAddModal';
+    modal.innerHTML =
+      '<div class="popup-glass">' +
+      '<button class="modal-close" onclick="closeModal(\'goalAddModal\')">✕</button>' +
+      '<div class="popup-title">💰 Tambah Tabungan</div>' +
+      '<p style="color:#b0c4de;margin-bottom:12px;font-weight:600;">Target: ' + (goal.icon || '🎯') + ' ' +
+      sanitize(goal.name) + '</p>' +
+      '<input type="number" id="goalAddAmount" placeholder="Nominal tambahan" min="1" step="1" />' +
+      '<input type="text" id="goalAddNote" placeholder="Catatan (opsional)" maxlength="100" />' +
+      '<button class="neon-btn full" onclick="confirmGoalAdd(\'' + goalId + '\')">Tambahkan</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'goalAddModal\')">Batal</button>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    setTimeout(function() {
+      var el = document.getElementById('goalAddAmount');
+      if (el) el.focus();
+    }, 100);
+  }
+
+  function confirmGoalAdd(goalId) {
+    var amount = parseInt(document.getElementById('goalAddAmount').value);
+    var note = document.getElementById('goalAddNote').value.trim();
+
+    if (!amount || amount <= 0) {
+      showToast('Nominal harus lebih dari 0', 'error');
+      return;
+    }
+
+    var goal = appData.goals.find(function(g) { return g.id === goalId; });
+    if (!goal) {
+      showToast('Target tidak ditemukan', 'error');
+      return;
+    }
+
+    goal.saved += amount;
+    goal.updatedAt = getCurrentDateTime();
+
+    appData.transactions.push({
+      id: generateId(),
+      type: 'saving',
+      amount: amount,
+      category: 'savings',
+      desc: note || 'Tabungan ' + goal.name,
+      date: getCurrentDateTime(),
+      goalId: goal.id
+    });
+
+    saveData(appData);
+    closeModal('goalAddModal');
+    showToast('💰 ' + formatCurrency(amount) + ' ditambahkan ke ' + goal.name, 'success');
+    renderCurrentPage();
+  }
+
+  // ============================================================
+  // 9. RENDER FUNCTIONS
+  // ============================================================
+
+  function renderDashboard() {
+    var data = appData;
+    var txs = data.transactions || [];
+    var goals = data.goals || [];
+    var totalInc = getTotalIncome(txs);
+    var totalExp = getTotalExpense(txs);
+    var totalSav = getTotalSaving(txs);
+    var balance = getTotalBalance(txs);
+    var goalSavings = getTotalGoalSavings(goals);
+    var recentTxs = txs.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    }).slice(0, 5);
+    var activeGoals = getActiveGoals(goals).slice(0, 3);
+
+    var html = '';
+
+    // Balance Card
+    html += '<div class="balance-card">';
+    html += '<div class="balance-label">TOTAL SALDO</div>';
+    html += '<div class="balance-amount">' + formatCurrency(balance) + '</div>';
+    html += '<div class="balance-stats">';
+    html += '<div class="balance-stat"><div class="stat-label">Pemasukan</div><div class="stat-value income">' +
+      formatCurrency(totalInc) + '</div></div>';
+    html += '<div class="balance-stat"><div class="stat-label">Pengeluaran</div><div class="stat-value expense">' +
+      formatCurrency(totalExp) + '</div></div>';
+    html += '<div class="balance-stat"><div class="stat-label">Tabungan</div><div class="stat-value savings">' +
+      formatCurrency(totalSav + goalSavings) + '</div></div>';
+    html += '</div>';
+    html += '<div class="balance-actions">';
+    html += '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Uang</button>';
+    html += '<button class="neon-btn danger" onclick="openTransactionModal(\'expense\')">− Ambil Uang</button>';
+    html += '<button class="neon-btn" onclick="openTransactionModal(\'saving\')">💰 Menabung</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Quick Stats
+    html += '<div class="quick-stats">';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + txs.length +
+      '</div><div class="stat-label">Transaksi</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + goals.length +
+      '</div><div class="stat-label">Target</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + getCompletedGoals(goals).length +
+      '</div><div class="stat-label">Tercapai</div></div>';
+    html += '<div class="quick-stat glass"><div class="stat-number">' + getActiveGoals(goals).length +
+      '</div><div class="stat-label">Aktif</div></div>';
+    html += '</div>';
+
+    // Goals Section
+    html += '<div class="glass">';
+    html += '<div class="section-header"><div class="section-title">🎯 Target Tabungan</div>' +
+      '<button class="section-link" onclick="showGoals()">Lihat Semua →</button></div>';
+
+    if (activeGoals.length > 0) {
+      activeGoals.forEach(function(g) {
+        var progress = calculateProgress(g);
+        var isCompleted = g.saved >= g.target;
+        html += '<div class="goal-item" onclick="showGoals()" style="border-color:' + (g.color ||
+          '#00e5ff') + ';">';
+        html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
+          .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
+          g.target) + '</span></div>';
+        html += '<div class="goal-progress"><div class="goal-fill" style="width:' + progress +
+          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
+        html += '<div class="goal-footer"><span>' + Math.round(progress) +
+          '%</span><span class="goal-status ' + (isCompleted ? 'completed' : '') + '">' + (isCompleted ?
+            '✅ Tercapai' : 'Sisa ' + formatCurrency(g.target - g.saved)) + '</span></div>';
+        html += '</div>';
+      });
+    } else {
+      html += '<div class="empty-state"><div class="empty-icon">🎯</div>' +
+        '<div class="empty-title">Belum ada target tabungan</div>' +
+        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
+        '<button class="neon-btn primary" onclick="openGoalModal()">+ Buat Target</button></div>';
+    }
+    html += '</div>';
+
+    // Recent Transactions
+    html += '<div class="glass">';
+    html += '<div class="section-header"><div class="section-title">📊 Transaksi Terbaru</div>' +
+      '<button class="section-link" onclick="showTransactions()">Lihat Semua →</button></div>';
+
+    if (recentTxs.length > 0) {
+      recentTxs.forEach(function(t) {
+        var isIncome = t.type === 'income';
+        var isExpense = t.type === 'expense';
+        var isSaving = t.type === 'saving';
+        var icon = getCategoryIcon(t.category);
+        var catName = getCategoryName(t.category);
+        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
+        var sign = isIncome ? '+' : (isExpense ? '-' : '');
+        html += '<div class="transaction-item">';
+        html += '<span class="tx-icon">' + icon + '</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
+          '</div><div class="tx-meta">' + formatDate(t.date) + ' · ' + catName + '</div></div>';
+        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
+          '</div>';
+        html += '</div>';
+      });
+    } else {
+      html += '<div class="empty-state"><div class="empty-icon">📊</div>' +
+        '<div class="empty-title">Belum ada transaksi</div>' +
+        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
+        '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
+    }
+    html += '</div>';
+
+    mainContent.innerHTML = html;
+  }
+
+  function showGoals() {
+    currentPage = 'goals';
+    var data = appData;
+    var goals = data.goals || [];
+
+    var html = '';
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+    html += '<div class="section-title" style="font-size:1.2rem;">🎯 Target Tabungan</div>';
+    html += '<button class="neon-btn primary small" onclick="openGoalModal()">+ Buat Target</button>';
+    html += '</div>';
+    html += '</div>';
+
+    if (goals.length === 0) {
+      html += '<div class="glass empty-state"><div class="empty-icon">🎯</div>' +
+        '<div class="empty-title">Belum ada target tabungan</div>' +
+        '<div class="empty-desc">Mulai buat target pertamamu dan pantau progresnya.</div>' +
+        '<button class="neon-btn primary" onclick="openGoalModal()">+ Buat Target</button></div>';
+    } else {
+      html += '<div class="goals-grid">';
+      goals.forEach(function(g) {
+        var progress = calculateProgress(g);
+        var isCompleted = g.saved >= g.target;
+        var remaining = Math.max(0, g.target - g.saved);
+        html += '<div class="goal-card ' + (isCompleted ? 'completed' : '') +
+          '" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.2)' : (g.color || '#00e5ff') +
+          '44') + ';">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+        html += '<div><div style="font-size:1.5rem;">' + (g.icon || '🎯') +
+          '</div><div class="goal-card-name">' + sanitize(g.name) + '</div></div>';
+        html += '<span style="font-size:0.7rem;color:#88a0b8;">' + (isCompleted ? '✅ Selesai' :
+          '🔄 Aktif') + '</span>';
+        html += '</div>';
+        html += '<div class="goal-card-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(g
+          .target) + '</div>';
+        html += '<div class="goal-card-progress"><div class="goal-fill" style="width:' + progress +
+          '%;background:' + (g.color || '#00e5ff') + ';"></div></div>';
+        html += '<div class="goal-card-footer">';
+        html += '<span>' + Math.round(progress) + '%</span>';
+        if (g.deadline) {
+          var days = Math.ceil((new Date(g.deadline) - new Date()) / (1000 * 60 * 60 * 24));
+          html += '<span>' + (days > 0 ? days + ' hari lagi' : 'Lewat deadline') + '</span>';
+        } else {
+          html += '<span>Tanpa deadline</span>';
+        }
+        if (!isCompleted) html += '<span>Sisa ' + formatCurrency(remaining) + '</span>';
+        html += '</div>';
+        if (g.note) html += '<div style="font-size:0.7rem;color:#88a0b8;margin-top:6px;">📝 ' +
+          sanitize(g.note) + '</div>';
+        html += '<div class="goal-card-actions">';
+        html += '<button class="neon-btn primary small" onclick="openGoalAddModal(\'' + g.id +
+          '\')">💰 Tambah</button>';
+        html += '<button class="neon-btn small" onclick="openGoalModal(\'' + g.id +
+          '\')">✏️ Edit</button>';
+        html += '<button class="neon-btn danger small" onclick="deleteGoal(\'' + g.id +
+          '\')">🗑️</button>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    mainContent.innerHTML = html;
+  }
+
+  function showTransactions() {
+    currentPage = 'transactions';
+    var data = appData;
+    var txs = data.transactions || [];
+    var sorted = txs.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    var html = '';
+    html += '<div class="glass" style="margin-bottom:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+    html += '<div class="section-title" style="font-size:1.2rem;">📊 Riwayat Transaksi</div>';
+    html += '<button class="neon-btn primary small" onclick="openTransactionModal(\'income\')">+ Tambah</button>';
+    html += '</div>';
+    html += '<div style="margin-top:12px;">';
+    html +=
+      '<input type="text" id="txSearch" placeholder="Cari transaksi..." oninput="filterTransactions()" style="width:100%;padding:10px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,229,255,0.15);color:inherit;outline:none;font-family:Rajdhani,sans-serif;font-size:0.9rem;" />';
+    html += '</div>';
+    html += '</div>';
+
+    if (sorted.length === 0) {
+      html += '<div class="glass empty-state"><div class="empty-icon">📊</div>' +
+        '<div class="empty-title">Belum ada transaksi</div>' +
+        '<div class="empty-desc">Catat pemasukan atau pengeluaran pertamamu.</div>' +
+        '<button class="neon-btn primary" onclick="openTransactionModal(\'income\')">+ Tambah Transaksi</button></div>';
+    } else {
+      html += '<div id="txList">';
+      sorted.forEach(function(t) {
+        var isIncome = t.type === 'income';
+        var isExpense = t.type === 'expense';
+        var isSaving = t.type === 'saving';
+        var icon = getCategoryIcon(t.category);
+        var catName = getCategoryName(t.category);
+        var cls = isIncome ? 'income' : (isExpense ? 'expense' : 'saving');
+        var sign = isIncome ? '+' : (isExpense ? '-' : '');
+        html += '<div class="transaction-item" style="padding:12px 16px;">';
+        html += '<span class="tx-icon">' + icon + '</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || catName) +
+          '</div><div class="tx-meta">' + catName + ' · ' + formatDateTime(t.date) + '</div></div>';
+        html += '<div class="tx-amount ' + cls + '">' + sign + ' ' + formatCurrency(t.amount) +
+          '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    mainContent.innerHTML = html;
+  }
+
+  function filterTransactions() {
+    var query = document.getElementById('txSearch')?.value?.toLowerCase() || '';
+    var items = document.querySelectorAll('#txList .transaction-item');
+    items.forEach(function(item) {
+      var text = item.textContent.toLowerCase();
+      item.style.display = text.includes(query) ? 'flex' : 'none';
+    });
+  }
+
+  function renderCurrentPage() {
+    switch (currentPage) {
+      case 'dashboard':
+        renderDashboard();
+        break;
+      case 'goals':
+        showGoals();
+        break;
+      case 'transactions':
+        showTransactions();
+        break;
+      default:
+        renderDashboard();
+    }
+  }
+
+  // ============================================================
+  // 10. SETTINGS FUNCTIONS
+  // ============================================================
+
+  function openSettings() {
+    var modal = document.createElement('div');
+    modal.className = 'popup-overlay active';
+    modal.id = 'settingsModal';
+    modal.innerHTML =
+      '<div class="popup-glass" style="text-align:left;">' +
+      '<button class="modal-close" onclick="closeModal(\'settingsModal\')">✕</button>' +
+      '<div class="popup-title" style="text-align:center;">⚙️ Pengaturan</div>' +
+      '<div style="margin:16px 0;">' +
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tampilan</h4>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      '<button class="neon-btn small" onclick="setTheme(\'dark\')">🌙 Dark</button>' +
+      '<button class="neon-btn small" onclick="setTheme(\'light\')">☀️ Light</button>' +
+      '<button class="neon-btn small" onclick="setTheme(\'system\')">🖥️ System</button>' +
+      '</div>' +
+      '</div>' +
+      '<div style="margin:16px 0;">' +
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Data</h4>' +
+      '<button class="neon-btn small" onclick="downloadBackup()" style="width:100%;margin-bottom:8px;">📥 Download Backup</button>' +
+      '<button class="neon-btn small" onclick="document.getElementById(\'restoreInput\').click()" style="width:100%;margin-bottom:8px;">📤 Restore Backup</button>' +
+      '<input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreBackup(this)" />' +
+      '<button class="neon-btn danger small" onclick="openResetModal()" style="width:100%;">🗑️ Reset Semua Data</button>' +
+      '</div>' +
+      '<div style="margin:16px 0;">' +
+      '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>' +
+      '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.0</p>' +
+      '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>' +
+      '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>' +
+      '<p style="color:#88a0b8;font-size:0.7rem;margin-top:2px;">⚠️ Hapus data browser dapat menghapus data tabungan</p>' +
+      '</div>' +
+      '<button class="neon-btn small" style="width:100%;margin-top:8px;" onclick="closeModal(\'settingsModal\')">Tutup</button>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+  }
+
+  function setTheme(theme) {
+    appData.settings.theme = theme;
+    saveData(appData);
+    applyTheme(theme);
+    showToast('Tema: ' + theme, 'success');
+    closeModal('settingsModal');
+  }
+
+  function applyTheme(theme) {
+    var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia(
+    '(prefers-color-scheme: dark)').matches);
+    document.body.classList.toggle('light-mode', !isDark);
+  }
+
+  function downloadBackup() {
+    try {
+      var data = exportData();
+      if (!data) {
+        showToast('Gagal membuat backup', 'error');
+        return;
+      }
+      var blob = new Blob([data], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'neonvault_backup_' + getToday() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('📥 Backup berhasil', 'success');
+    } catch (e) {
+      showToast('Gagal backup', 'error');
+    }
+  }
+
+  function restoreBackup(input) {
+    var file = input.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var success = importData(e.target.result);
+        if (success) {
+          appData = loadData();
+          renderCurrentPage();
+          showToast('📤 Backup berhasil dipulihkan', 'success');
+        } else {
+          showToast('Format backup tidak valid', 'error');
+        }
+      } catch (err) {
+        showToast('Gagal restore', 'error');
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
+  function openResetModal() {
+    var modal = document.createElement('div');
+    modal.className = 'popup-overlay active';
+    modal.id = 'resetModal';
+    modal.innerHTML =
+      '<div class="popup-glass">' +
+      '<button class="modal-close" onclick="closeModal(\'resetModal\')">✕</button>' +
+      '<div class="popup-title">⚠️ RESET NEONVAULT</div>' +
+      '<p style="color:#ff6b6b;font-weight:500;margin:8px 0;">Semua transaksi, saldo dan target akan dihapus.</p>' +
+      '<p style="margin:12px 0 8px;color:#b0c4de;">Ketik <strong>HAPUS</strong> untuk konfirmasi:</p>' +
+      '<input type="text" id="resetConfirm" placeholder="Ketik HAPUS" maxlength="10" style="text-transform:uppercase;" oninput="document.getElementById(\'resetBtn\').disabled = this.value !== \'HAPUS\'" />' +
+      '<button id="resetBtn" class="neon-btn danger full" disabled onclick="confirmReset()">Hapus Semua Data</button>' +
+      '<button class="neon-btn small" style="margin-top:8px;width:100%;" onclick="closeModal(\'resetModal\')">Batal</button>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    setTimeout(function() {
+      var el = document.getElementById('resetConfirm');
+      if (el) el.focus();
+    }, 100);
+  }
+
+  function confirmReset() {
+    // Create backup before reset
+    downloadBackup();
+
+    var newData = resetAllData();
+    if (newData) {
+      appData = newData;
+      renderCurrentPage();
+      closeModal('resetModal');
+      showToast('🗑️ Semua data telah direset', 'warning');
+    } else {
+      showToast('Gagal reset data', 'error');
+    }
+  }
+
+  function updateClock() {
+    try {
+      var now = new Date();
+      if (clockEl) {
+        clockEl.textContent = now.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      }
+      if (dateEl) {
+        dateEl.textContent = now.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+      }
+    } catch (e) {}
+  }
+
+  // ============================================================
+  // 11. EXPOSE GLOBALLY
+  // ============================================================
+
+  window.openTransactionModal = openTransactionModal;
+  window.confirmTransaction = confirmTransaction;
+  window.undoTransaction = undoTransaction;
+  window.openGoalModal = openGoalModal;
+  window.confirmGoal = confirmGoal;
+  window.deleteGoal = deleteGoal;
+  window.openGoalAddModal = openGoalAddModal;
+  window.confirmGoalAdd = confirmGoalAdd;
+  window.closeModal = closeModal;
+  window.showToast = showToast;
+  window.showGoals = showGoals;
+  window.showTransactions = showTransactions;
+  window.filterTransactions = filterTransactions;
+  window.selectColor = selectColor;
+  window.setTheme = setTheme;
+  window.downloadBackup = downloadBackup;
+  window.restoreBackup = restoreBackup;
+  window.openResetModal = openResetModal;
+  window.confirmReset = confirmReset;
+  window.openSettings = openSettings;
+
+  // ============================================================
+  // 12. INITIALIZATION
+  // ============================================================
+
+  function init() {
+    try {
+      // Load data
+      appData = loadData();
+
+      // Apply theme
+      applyTheme(appData.settings.theme || 'dark');
+
+      // Check onboarding
+      if (!appData.settings.onboardingComplete) {
+        onboarding.classList.add('active');
+        loadingScreen.classList.add('hidden');
+      } else if (!appData.settings.userName) {
+        onboarding.classList.remove('active');
+        namePopup.classList.add('active');
+        loadingScreen.classList.add('hidden');
+        setTimeout(function() {
+          if (nameInput) nameInput.focus();
+        }, 100);
+      } else {
+        onboarding.classList.remove('active');
+        namePopup.classList.remove('active');
+        dashboard.classList.add('active');
+        loadingScreen.classList.add('hidden');
+        renderDashboard();
+      }
+
+      // Onboarding start
+      onboardingStart.addEventListener('click', function() {
+        appData.settings.onboardingComplete = true;
+        saveData(appData);
+        onboarding.classList.remove('active');
+        namePopup.classList.add('active');
+        setTimeout(function() {
+          if (nameInput) nameInput.focus();
+        }, 100);
+      });
+
+      // Name popup start
+      startBtn.addEventListener('click', function() {
+        var name = nameInput.value.trim();
+        if (!name) {
+          showToast('Masukkan nama terlebih dahulu', 'error');
+          nameInput.focus();
+          return;
+        }
+        appData.settings.userName = name;
+        saveData(appData);
+        namePopup.classList.remove('active');
+        dashboard.classList.add('active');
+        renderDashboard();
+        showToast('Selamat datang, ' + name + '! ✦', 'success');
+      });
+
+      nameInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          startBtn.click();
+        }
+      });
+
+      // Settings toggle
+      settingsToggle.addEventListener('click', openSettings);
+
+      // Clock
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      console.log('🚀 NEONVAULT V2 initialized successfully!');
+
+    } catch (e) {
+      console.error('Init error:', e);
+      loadingScreen.classList.add('hidden');
+      onboarding.classList.add('active');
+    }
+  }
+
+  // Start when DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();

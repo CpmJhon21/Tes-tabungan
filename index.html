@@ -4,27 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
   <title>NEONVAULT V2 · Tabungan Cyber</title>
-  <meta name="description" content="Aplikasi tabungan modern dengan desain cyberpunk futuristik" />
   <meta name="theme-color" content="#050816" />
-  <link rel="manifest" href="manifest.json" />
+  <meta name="description" content="Aplikasi tabungan modern dengan desain cyberpunk futuristik" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- ============================================================
-       LOADING SCREEN
-       ============================================================ -->
+  <!-- ===== LOADING SCREEN ===== -->
   <div id="loadingScreen" class="loading-overlay">
     <div class="loader-ring"></div>
     <div class="loader-text">INISIALISASI NEONVAULT</div>
   </div>
 
-  <!-- ============================================================
-       ONBOARDING
-       ============================================================ -->
-  <div id="onboarding" class="onboarding-overlay hidden">
+  <!-- ===== ONBOARDING ===== -->
+  <div id="onboarding" class="onboarding-overlay active">
     <div class="onboarding-content">
       <div class="onboarding-icon">✦</div>
       <h1 class="onboarding-title">NEONVAULT</h1>
@@ -34,10 +29,8 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       POPUP NAMA
-       ============================================================ -->
-  <div id="namePopup" class="popup-overlay hidden">
+  <!-- ===== POPUP NAMA ===== -->
+  <div id="namePopup" class="popup-overlay">
     <div class="popup-glass">
       <div class="popup-title">✦ SELAMAT DATANG ✦</div>
       <p class="popup-sub">Masukkan nama untuk memulai</p>
@@ -46,18 +39,8 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       DASHBOARD UTAMA
-       ============================================================ -->
-  <div id="dashboard" class="dashboard hidden">
-    
-    <!-- Background Canvas -->
-    <canvas id="bgCanvas"></canvas>
-    
-    <!-- Mouse Glow -->
-    <div id="mouseGlow" class="mouse-glow"></div>
-
-    <!-- ========== HEADER ========== -->
+  <!-- ===== DASHBOARD ===== -->
+  <div id="dashboard" class="dashboard">
     <header class="glass-header">
       <div class="logo">✦ NEONVAULT</div>
       <div class="header-right">
@@ -67,205 +50,14 @@
       </div>
     </header>
 
-    <!-- ========== MAIN CONTENT ========== -->
     <main class="main-grid" id="mainContent">
       <!-- Content akan di-render oleh JavaScript -->
     </main>
-
-    <!-- ============================================================
-         BOTTOM NAVIGATION (Mobile)
-         ============================================================ -->
-    <nav class="bottom-nav" id="bottomNav">
-      <button class="nav-item active" data-page="dashboard">
-        <span class="nav-icon">🏠</span>
-        <span class="nav-label">Beranda</span>
-      </button>
-      <button class="nav-item" data-page="goals">
-        <span class="nav-icon">🎯</span>
-        <span class="nav-label">Target</span>
-      </button>
-      <button class="nav-item" data-page="transactions">
-        <span class="nav-icon">📊</span>
-        <span class="nav-label">Transaksi</span>
-      </button>
-      <button class="nav-item" data-page="analytics">
-        <span class="nav-icon">📈</span>
-        <span class="nav-label">Analitik</span>
-      </button>
-      <button class="nav-item" data-page="settings">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">Pengaturan</span>
-      </button>
-    </nav>
-
-    <!-- ============================================================
-         MODAL-MODAL
-         ============================================================ -->
-    
-    <!-- Modal Transaksi -->
-    <div id="transactionModal" class="modal-overlay hidden">
-      <div class="modal-glass">
-        <div class="modal-header">
-          <span id="modalTitle">Tambah Transaksi</span>
-          <button class="modal-close icon-btn">✕</button>
-        </div>
-        <div class="modal-body">
-          <select id="modalType" class="modal-select">
-            <option value="income">💼 Pemasukan</option>
-            <option value="expense">🛒 Pengeluaran</option>
-            <option value="saving">💰 Menabung</option>
-          </select>
-          <input type="number" id="modalAmount" placeholder="Nominal" min="1" step="1" />
-          <select id="modalCategory" class="modal-select">
-            <option value="food">🍔 Makanan</option>
-            <option value="transport">🚗 Transportasi</option>
-            <option value="shopping">🛒 Belanja</option>
-            <option value="salary">💼 Gaji</option>
-            <option value="bonus">🎁 Bonus</option>
-            <option value="home">🏠 Rumah</option>
-            <option value="education">🎓 Pendidikan</option>
-            <option value="entertainment">🎮 Hiburan</option>
-            <option value="savings">💰 Tabungan</option>
-            <option value="other">📦 Lainnya</option>
-          </select>
-          <div id="modalGoalSelect" class="hidden">
-            <select id="modalGoal" class="modal-select">
-              <option value="">Pilih Target Tabungan</option>
-            </select>
-          </div>
-          <input type="text" id="modalDesc" placeholder="Catatan (opsional)" maxlength="100" />
-          <div class="modal-date">📅 <span id="modalDate">Otomatis</span></div>
-          <button id="modalConfirmBtn" class="neon-btn full">Simpan Transaksi</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal Target -->
-    <div id="goalModal" class="modal-overlay hidden">
-      <div class="modal-glass">
-        <div class="modal-header">
-          <span id="goalModalTitle">🎯 Target Baru</span>
-          <button class="modal-close icon-btn">✕</button>
-        </div>
-        <div class="modal-body">
-          <input type="text" id="goalName" placeholder="Nama Target" maxlength="50" />
-          <input type="number" id="goalTarget" placeholder="Target Nominal" min="1" step="1" />
-          <input type="date" id="goalDeadline" />
-          <input type="text" id="goalNote" placeholder="Catatan (opsional)" maxlength="100" />
-          <div class="modal-color-picker">
-            <label>Warna Target</label>
-            <div class="color-options">
-              <button class="color-option active" data-color="#00e5ff" style="background:#00e5ff"></button>
-              <button class="color-option" data-color="#7c4dff" style="background:#7c4dff"></button>
-              <button class="color-option" data-color="#00ff88" style="background:#00ff88"></button>
-              <button class="color-option" data-color="#ff6b6b" style="background:#ff6b6b"></button>
-              <button class="color-option" data-color="#ffd93d" style="background:#ffd93d"></button>
-              <button class="color-option" data-color="#6bcbff" style="background:#6bcbff"></button>
-              <button class="color-option" data-color="#ff8a5c" style="background:#ff8a5c"></button>
-              <button class="color-option" data-color="#a8e6cf" style="background:#a8e6cf"></button>
-            </div>
-          </div>
-          <button id="goalConfirmBtn" class="neon-btn full">Simpan Target</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal Tambah Tabungan ke Target -->
-    <div id="goalAddModal" class="modal-overlay hidden">
-      <div class="modal-glass">
-        <div class="modal-header">
-          <span id="goalAddTitle">💰 Tambah Tabungan</span>
-          <button class="modal-close icon-btn">✕</button>
-        </div>
-        <div class="modal-body">
-          <p id="goalAddName" style="font-weight:600;margin-bottom:8px;">Target: -</p>
-          <input type="number" id="goalAddAmount" placeholder="Nominal tambahan" min="1" step="1" />
-          <input type="text" id="goalAddNote" placeholder="Catatan (opsional)" maxlength="100" />
-          <button id="goalAddConfirmBtn" class="neon-btn full">Tambahkan</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal Konfirmasi Reset -->
-    <div id="resetModal" class="modal-overlay hidden">
-      <div class="modal-glass">
-        <div class="modal-header">
-          <span>⚠️ RESET NEONVAULT</span>
-          <button class="modal-close icon-btn">✕</button>
-        </div>
-        <div class="modal-body">
-          <p style="color:#ff6b6b;font-weight:500;">Semua transaksi, saldo dan target akan dihapus.</p>
-          <p style="margin:12px 0 8px;">Ketik <strong>HAPUS</strong> untuk konfirmasi:</p>
-          <input type="text" id="resetConfirmInput" placeholder="Ketik HAPUS" maxlength="10" style="text-transform:uppercase;" />
-          <button id="resetConfirmBtn" class="neon-btn danger full" disabled>Hapus Semua Data</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ============================================================
-         SETTINGS MODAL
-         ============================================================ -->
-    <div id="settingsModal" class="modal-overlay hidden">
-      <div class="modal-glass">
-        <div class="modal-header">
-          <span>⚙️ Pengaturan</span>
-          <button class="modal-close icon-btn">✕</button>
-        </div>
-        <div class="modal-body settings-body">
-          <div class="settings-group">
-            <h4>Tampilan</h4>
-            <div class="settings-row">
-              <button id="themeDark" class="neon-btn small active">🌙 Dark</button>
-              <button id="themeLight" class="neon-btn small">☀️ Light</button>
-              <button id="themeSystem" class="neon-btn small">🖥️ System</button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <h4>Mata Uang</h4>
-            <select id="currencySelect" class="modal-select">
-              <option value="IDR">IDR - Rupiah</option>
-              <option value="USD">USD - Dolar</option>
-              <option value="EUR">EUR - Euro</option>
-              <option value="JPY">JPY - Yen</option>
-            </select>
-          </div>
-          <div class="settings-group">
-            <h4>Notifikasi</h4>
-            <div class="settings-row">
-              <label class="toggle-switch">
-                <input type="checkbox" id="reminderToggle" checked />
-                <span class="toggle-slider"></span>
-                <span style="margin-left:10px;">Aktifkan Pengingat</span>
-              </label>
-            </div>
-          </div>
-          <div class="settings-group">
-            <h4>Data</h4>
-            <button id="backupBtn" class="neon-btn small">📥 Download Backup</button>
-            <button id="restoreBtn" class="neon-btn small">📤 Restore Backup</button>
-            <input type="file" id="restoreFileInput" accept=".json" style="display:none" />
-            <button id="resetBtn" class="neon-btn danger small">🗑️ Reset Semua Data</button>
-          </div>
-          <div class="settings-group">
-            <h4>Tentang</h4>
-            <p style="color:#88a0b8;font-size:0.85rem;">NEONVAULT v2.0.0</p>
-            <p style="color:#88a0b8;font-size:0.8rem;">Personal Savings Manager</p>
-            <p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal di perangkat ini</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ============================================================
-         TOAST NOTIFICATION
-         ============================================================ -->
-    <div id="toastContainer" class="toast-container"></div>
   </div>
 
-  <script src="data.js"></script>
-  <script src="storage.js"></script>
-  <script src="charts.js"></script>
-  <script src="ui.js"></script>
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div id="toastContainer" class="toast-container"></div>
+
   <script src="app.js"></script>
 </body>
 </html>
