@@ -18,110 +18,15 @@
     <div class="loader-text">INISIALISASI NEONVAULT</div>
   </div>
 
-  <!-- ============================================================
-       ONBOARDING MODE (appMode = 'onboarding')
-       ============================================================ -->
-  <div id="onboardingContainer" class="onboarding-container active">
-    
-    <!-- Onboarding Navbar -->
-    <nav class="onboarding-nav" id="onboardingNav" aria-label="Navigasi Onboarding">
-      <div class="onboarding-nav-inner">
-        <div class="onboarding-nav-logo">✦ NEONVAULT</div>
-        <div class="onboarding-nav-actions" id="onboardingNavActions">
-          <button class="onboarding-nav-link" onclick="App.navigateToRules()" aria-label="Aturan">📖 Aturan</button>
-          <button class="onboarding-nav-link" onclick="App.navigateToAbout()" aria-label="Tentang">ℹ️ Tentang</button>
-          <button class="onboarding-nav-link primary" onclick="App.startApp()" aria-label="Mulai">🚀 Mulai</button>
-          <button class="onboarding-nav-hamburger" id="onboardingHamburger" aria-label="Buka menu" aria-expanded="false">
-            <span></span><span></span><span></span>
-          </button>
-        </div>
-      </div>
-      
-      <!-- Onboarding Mobile Menu -->
-      <div class="onboarding-mobile-menu" id="onboardingMobileMenu">
-        <div class="onboarding-mobile-menu-header">
-          <span class="onboarding-mobile-logo">✦ NEONVAULT</span>
-          <button class="onboarding-mobile-close" id="onboardingMobileClose" aria-label="Tutup menu">✕</button>
-        </div>
-        <div class="onboarding-mobile-menu-body">
-          <button class="onboarding-mobile-item" onclick="App.navigateToRules(); App.closeOnboardingMenu();">
-            <span class="onboarding-mobile-icon">📖</span> Aturan
-          </button>
-          <button class="onboarding-mobile-item" onclick="App.navigateToAbout(); App.closeOnboardingMenu();">
-            <span class="onboarding-mobile-icon">ℹ️</span> Tentang
-          </button>
-          <button class="onboarding-mobile-item primary" onclick="App.startApp(); App.closeOnboardingMenu();">
-            <span class="onboarding-mobile-icon">🚀</span> Mulai NEONVAULT
-          </button>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Onboarding Content -->
-    <div id="onboardingContent" class="onboarding-content">
-      <div class="onboarding-hero">
-        <div class="onboarding-icon">✦</div>
-        <h1 class="onboarding-title">NEONVAULT</h1>
-        <p class="onboarding-sub">Your Money. Your Goals. Your Future.</p>
-        <p class="onboarding-desc">Kelola tabunganmu dengan mudah tanpa login.</p>
-        <button id="onboardingStartBtn" class="neon-btn primary" onclick="App.startApp()">🚀 Mulai</button>
-      </div>
+  <!-- ===== ONBOARDING ===== -->
+  <div id="onboarding" class="onboarding-overlay">
+    <div class="onboarding-content">
+      <div class="onboarding-icon">✦</div>
+      <h1 class="onboarding-title">NEONVAULT</h1>
+      <p class="onboarding-sub">Your Money. Your Goals. Your Future.</p>
+      <p class="onboarding-desc">Kelola tabunganmu dengan mudah tanpa login.</p>
+      <button id="onboardingStart" class="neon-btn">Mulai</button>
     </div>
-  </div>
-
-  <!-- ============================================================
-       APPLICATION MODE (appMode = 'app')
-       ============================================================ -->
-  <div id="appContainer" class="app-container">
-    
-    <!-- Application Navbar (Desktop) -->
-    <nav class="app-nav" id="appNav" aria-label="Navigasi Aplikasi">
-      <div class="app-nav-inner">
-        <div class="app-nav-logo">✦ NEONVAULT</div>
-        <div class="app-nav-links">
-          <button class="app-nav-link active" data-page="dashboard" onclick="App.navigateToApp('dashboard')">🏠 Beranda</button>
-          <button class="app-nav-link" data-page="goals" onclick="App.navigateToApp('goals')">🎯 Target</button>
-          <button class="app-nav-link" data-page="transactions" onclick="App.navigateToApp('transactions')">📊 Transaksi</button>
-          <button class="app-nav-link" data-page="analytics" onclick="App.navigateToApp('analytics')">📈 Analitik</button>
-          <button class="app-nav-link" data-page="settings" onclick="App.navigateToApp('settings')">⚙️ Pengaturan</button>
-        </div>
-        <div class="app-nav-right">
-          <span id="appClock">--:--:--</span>
-          <span id="appDate">--</span>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Application Content -->
-    <div id="appContent" class="app-content">
-      <main class="app-main" id="appMain">
-        <!-- Content akan di-render oleh JavaScript -->
-      </main>
-    </div>
-
-    <!-- Application Bottom Nav (Mobile) -->
-    <nav class="app-bottom-nav" id="appBottomNav" aria-label="Navigasi Aplikasi Mobile">
-      <button class="app-bottom-item active" data-page="dashboard" onclick="App.navigateToApp('dashboard')">
-        <span class="app-bottom-icon">🏠</span>
-        <span class="app-bottom-label">Beranda</span>
-      </button>
-      <button class="app-bottom-item" data-page="goals" onclick="App.navigateToApp('goals')">
-        <span class="app-bottom-icon">🎯</span>
-        <span class="app-bottom-label">Target</span>
-      </button>
-      <button class="app-bottom-item" data-page="transactions" onclick="App.navigateToApp('transactions')">
-        <span class="app-bottom-icon">📊</span>
-        <span class="app-bottom-label">Transaksi</span>
-      </button>
-      <button class="app-bottom-item" data-page="analytics" onclick="App.navigateToApp('analytics')">
-        <span class="app-bottom-icon">📈</span>
-        <span class="app-bottom-label">Analitik</span>
-      </button>
-      <button class="app-bottom-item" data-page="settings" onclick="App.navigateToApp('settings')">
-        <span class="app-bottom-icon">⚙️</span>
-        <span class="app-bottom-label">Pengaturan</span>
-      </button>
-    </nav>
   </div>
 
   <!-- ===== POPUP NAMA ===== -->
@@ -129,10 +34,50 @@
     <div class="popup-glass">
       <div class="popup-title">✦ SELAMAT DATANG ✦</div>
       <p class="popup-sub">Masukkan nama untuk memulai</p>
-      <input type="text" id="nameInput" placeholder="Nama Anda" maxlength="25" autofocus aria-label="Nama Anda" />
-      <button id="startBtn" class="neon-btn" onclick="App.confirmName()">Mulai</button>
+      <input type="text" id="nameInput" placeholder="Nama Anda" maxlength="25" autofocus />
+      <button id="startBtn" class="neon-btn">Mulai</button>
     </div>
   </div>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div id="dashboard" class="dashboard">
+    <header class="glass-header">
+      <div class="logo">✦ NEONVAULT</div>
+      <div class="header-right">
+        <span id="realTimeClock">--:--:--</span>
+        <span id="realTimeDate">--</span>
+        <button id="settingsToggle" class="icon-btn" aria-label="Pengaturan">⚙️</button>
+      </div>
+    </header>
+
+    <main class="main-grid" id="mainContent">
+      <!-- Content akan di-render oleh JavaScript -->
+    </main>
+  </div>
+
+  <!-- ===== BOTTOM NAVIGATION ===== -->
+  <nav class="bottom-nav" id="bottomNav" aria-label="Navigasi Utama">
+    <button class="nav-item active" data-page="dashboard" aria-label="Beranda">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Beranda</span>
+    </button>
+    <button class="nav-item" data-page="goals" aria-label="Target">
+      <span class="nav-icon">🎯</span>
+      <span class="nav-label">Target</span>
+    </button>
+    <button class="nav-item" data-page="transactions" aria-label="Transaksi">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Transaksi</span>
+    </button>
+    <button class="nav-item" data-page="analytics" aria-label="Analitik">
+      <span class="nav-icon">📈</span>
+      <span class="nav-label">Analitik</span>
+    </button>
+    <button class="nav-item" data-page="settings" aria-label="Pengaturan">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Pengaturan</span>
+    </button>
+  </nav>
 
   <!-- ===== TOAST CONTAINER ===== -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
