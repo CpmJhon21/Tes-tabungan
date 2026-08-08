@@ -1,7 +1,7 @@
 /**
  * ============================================================
- * app.js – NEONVAULT V2 Complete
- * Version: 2.0.0
+ * app.js – NEONVAULT V2 - Fixed Navigation
+ * Version: 2.0.1
  * ============================================================
  */
 
@@ -338,7 +338,6 @@
         return def;
       }
       var data = JSON.parse(raw);
-      // Migration if needed
       if (data.version !== 2) {
         data = migrateData(data);
       }
@@ -412,10 +411,13 @@
 
   var appData = null;
   var currentPage = 'dashboard';
+  var previousPage = null;
+  var currentGoalId = null;
   var transactionToUndo = null;
   var selectedColor = '#00e5ff';
   var chartPeriod = 30;
   var reminderInterval = null;
+  var pageHistory = [];
 
   // ============================================================
   // 5. DOM REFS
@@ -460,7 +462,62 @@
   }
 
   // ============================================================
-  // 7. MODAL FUNCTIONS
+  // 7. NAVIGATION SYSTEM
+  // ============================================================
+
+  function navigateTo(page, params) {
+    // Save current page to history
+    if (currentPage && currentPage !== page) {
+      pageHistory.push({ page: currentPage, params: currentGoalId });
+      if (pageHistory.length > 20) pageHistory.shift();
+    }
+
+    // Handle back navigation
+    if (page === 'back') {
+      if (pageHistory.length > 0) {
+        var last = pageHistory.pop();
+        page = last.page;
+        currentGoalId = last.params;
+      } else {
+        page = 'dashboard';
+        currentGoalId = null;
+      }
+    }
+
+    currentPage = page;
+    previousPage = pageHistory.length > 0 ? pageHistory[pageHistory.length - 1]?.page : null;
+
+    // Update browser history
+    try {
+      var state = { page: page, goalId: currentGoalId };
+      history.pushState(state, '', '#' + page + (currentGoalId ? '/' + currentGoalId : ''));
+    } catch (e) {}
+
+    // Update bottom nav
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.classList.toggle('active', item.dataset.page === page);
+    });
+
+    // Render page
+    renderCurrentPage();
+  }
+
+  // Handle browser back
+  window.addEventListener('popstate', function(e) {
+    if (e.state && e.state.page) {
+      currentPage = e.state.page;
+      currentGoalId = e.state.goalId || null;
+      renderCurrentPage();
+    } else {
+      // Fallback: go to dashboard
+      currentPage = 'dashboard';
+      currentGoalId = null;
+      renderCurrentPage();
+    }
+  });
+
+  // ============================================================
+  // 8. MODAL FUNCTIONS
   // ============================================================
 
   function closeModal(id) {
@@ -579,7 +636,7 @@
   }
 
   // ============================================================
-  // 8. GOAL FUNCTIONS
+  // 9. GOAL FUNCTIONS
   // ============================================================
 
   function openGoalModal(goalId) {
@@ -645,8 +702,9 @@
       return;
     }
 
+    var goal;
     if (goalId) {
-      var goal = appData.goals.find(function(g) { return g.id === goalId; });
+      goal = appData.goals.find(function(g) { return g.id === goalId; });
       if (goal) {
         goal.name = name;
         goal.target = target;
@@ -657,7 +715,7 @@
         showToast('✅ Target diupdate', 'success');
       }
     } else {
-      appData.goals.push({
+      goal = {
         id: generateId(),
         name: name,
         target: target,
@@ -668,13 +726,21 @@
         icon: '🎯',
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime()
-      });
+      };
+      appData.goals.push(goal);
       showToast('🎯 Target dibuat!', 'success');
     }
 
     saveData(appData);
     closeModal('goalModal');
-    renderCurrentPage();
+
+    // Navigate to goal detail
+    if (goal) {
+      currentGoalId = goal.id;
+      navigateTo('goalDetail');
+    } else {
+      navigateTo('goals');
+    }
   }
 
   function deleteGoal(goalId) {
@@ -682,7 +748,12 @@
     appData.goals = appData.goals.filter(function(g) { return g.id !== goalId; });
     saveData(appData);
     showToast('🗑️ Target dihapus', 'warning');
-    renderCurrentPage();
+    if (currentGoalId === goalId) {
+      currentGoalId = null;
+      navigateTo('goals');
+    } else {
+      renderCurrentPage();
+    }
   }
 
   function openGoalAddModal(goalId) {
@@ -746,8 +817,12 @@
   }
 
   // ============================================================
-  // 9. RENDER FUNCTIONS
+  // 10. RENDER FUNCTIONS
   // ============================================================
+
+  function renderBackButton(targetPage) {
+    return '<button class="back-button" onclick="navigateTo(\'back\')">← Kembali</button>';
+  }
 
   function renderDashboard() {
     var data = appData;
@@ -812,7 +887,7 @@
       activeGoals.forEach(function(g) {
         var progress = calculateProgress(g);
         var isCompleted = g.saved >= g.target;
-        html += '<div class="goal-item" onclick="navigateTo(\'goals\')" style="border-color:' + (g.color ||
+        html += '<div class="goal-item" onclick="navigateToGoalDetail(\'' + g.id + '\')" style="border-color:' + (g.color ||
           '#00e5ff') + ';">';
         html += '<div class="goal-header"><span class="goal-name">' + (g.icon || '🎯') + ' ' + sanitize(g
           .name) + '</span><span class="goal-amount">' + formatCurrency(g.saved) + ' / ' + formatCurrency(
@@ -865,13 +940,102 @@
     mainContent.innerHTML = html;
   }
 
-  function navigateTo(page) {
-    currentPage = page;
-    // Update bottom nav
-    document.querySelectorAll('.nav-item').forEach(function(item) {
-      item.classList.toggle('active', item.dataset.page === page);
-    });
-    renderCurrentPage();
+  function navigateToGoalDetail(goalId) {
+    currentGoalId = goalId;
+    navigateTo('goalDetail');
+  }
+
+  function renderGoalDetail() {
+    var goal = appData.goals.find(function(g) { return g.id === currentGoalId; });
+    if (!goal) {
+      showToast('Target tidak ditemukan', 'error');
+      navigateTo('goals');
+      return;
+    }
+
+    var progress = calculateProgress(goal);
+    var isCompleted = goal.saved >= goal.target;
+    var remaining = Math.max(0, goal.target - goal.saved);
+    var daysLeft = goal.deadline ? Math.ceil((new Date(goal.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+
+    var html = '';
+    
+    // Back button
+    html += '<div style="margin-bottom:12px;">';
+    html += '<button class="back-button" onclick="navigateTo(\'back\')">← Kembali</button>';
+    html += '</div>';
+
+    // Goal Detail Card
+    html += '<div class="glass" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.3)' : (goal.color || '#00e5ff') + '44') + ';">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">';
+    html += '<div><div style="font-size:2.5rem;">' + (goal.icon || '🎯') + '</div>';
+    html += '<div style="font-size:1.4rem;font-weight:700;margin:4px 0;">' + sanitize(goal.name) + '</div>';
+    html += '<div style="color:#88a0b8;font-size:1rem;">' + formatCurrency(goal.saved) + ' / ' + formatCurrency(goal.target) + '</div>';
+    html += '</div>';
+    html += '<span class="goal-status ' + (isCompleted ? 'completed' : '') + '" style="font-size:0.85rem;padding:4px 16px;">' + 
+      (isCompleted ? '✅ Selesai' : '🔄 Aktif') + '</span>';
+    html += '</div>';
+
+    // Progress
+    html += '<div class="goal-card-progress" style="height:10px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin:12px 0;">';
+    html += '<div class="goal-fill" style="width:' + progress + '%;background:' + (goal.color || '#00e5ff') + ';height:100%;border-radius:4px;transition:width 0.6s ease;"></div>';
+    html += '</div>';
+
+    // Stats
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0;">';
+    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+    html += '<div style="font-size:0.7rem;color:#88a0b8;">Progress</div>';
+    html += '<div style="font-size:1.2rem;font-weight:700;color:' + (goal.color || '#00e5ff') + ';">' + Math.round(progress) + '%</div>';
+    html += '</div>';
+    
+    if (!isCompleted) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+      html += '<div style="font-size:0.7rem;color:#88a0b8;">Sisa</div>';
+      html += '<div style="font-size:1.2rem;font-weight:700;color:#ffd93d;">' + formatCurrency(remaining) + '</div>';
+      html += '</div>';
+    }
+    
+    if (goal.deadline) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;">';
+      html += '<div style="font-size:0.7rem;color:#88a0b8;">Deadline</div>';
+      html += '<div style="font-size:1.1rem;font-weight:600;color:' + (daysLeft !== null && daysLeft < 0 ? '#ff4d6d' : '#6bcbff') + ';">' + 
+        (daysLeft !== null ? (daysLeft > 0 ? daysLeft + ' hari lagi' : 'Lewat deadline') : 'Tanpa deadline') + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Note
+    if (goal.note) {
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;margin:8px 0;font-size:0.9rem;color:#b0c4de;">';
+      html += '📝 ' + sanitize(goal.note);
+      html += '</div>';
+    }
+
+    // Actions
+    html += '<div class="goal-card-actions" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">';
+    html += '<button class="neon-btn primary" onclick="openGoalAddModal(\'' + goal.id + '\')" style="flex:1;min-width:100px;">💰 Tambah Tabungan</button>';
+    html += '<button class="neon-btn" onclick="openGoalModal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">✏️ Edit</button>';
+    html += '<button class="neon-btn danger" onclick="deleteGoal(\'' + goal.id + '\')" style="flex:1;min-width:80px;">🗑️ Hapus</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Related Transactions
+    var relatedTxs = appData.transactions.filter(function(t) { return t.goalId === goal.id; });
+    if (relatedTxs.length > 0) {
+      html += '<div class="glass" style="margin-top:16px;">';
+      html += '<div style="font-weight:600;margin-bottom:12px;">📊 Riwayat Tabungan</div>';
+      relatedTxs.sort(function(a, b) { return new Date(b.date) - new Date(a.date); }).forEach(function(t) {
+        html += '<div class="transaction-item" style="padding:8px 12px;">';
+        html += '<span class="tx-icon">💰</span>';
+        html += '<div class="tx-info"><div class="tx-title">' + sanitize(t.desc || 'Tabungan') + '</div>';
+        html += '<div class="tx-meta">' + formatDateTime(t.date) + '</div></div>';
+        html += '<div class="tx-amount saving">+ ' + formatCurrency(t.amount) + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    mainContent.innerHTML = html;
   }
 
   function renderGoals() {
@@ -900,9 +1064,9 @@
         var remaining = Math.max(0, g.target - g.saved);
         html += '<div class="goal-card ' + (isCompleted ? 'completed' : '') +
           '" style="border-color:' + (isCompleted ? 'rgba(0,255,136,0.2)' : (g.color || '#00e5ff') +
-          '44') + ';">';
+          '44') + ';cursor:pointer;" onclick="navigateToGoalDetail(\'' + g.id + '\')">';
         html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-        html += '<div><div style="font-size:1.5rem;">' + (g.icon || '🎯') +
+        html += '<div><div style="font-size:1.8rem;">' + (g.icon || '🎯') +
           '</div><div class="goal-card-name">' + sanitize(g.name) + '</div></div>';
         html += '<span style="font-size:0.7rem;color:#88a0b8;">' + (isCompleted ? '✅ Selesai' :
           '🔄 Aktif') + '</span>';
@@ -923,7 +1087,7 @@
         html += '</div>';
         if (g.note) html += '<div style="font-size:0.7rem;color:#88a0b8;margin-top:6px;">📝 ' +
           sanitize(g.note) + '</div>';
-        html += '<div class="goal-card-actions">';
+        html += '<div class="goal-card-actions" onclick="event.stopPropagation();">';
         html += '<button class="neon-btn primary small" onclick="openGoalAddModal(\'' + g.id +
           '\')">💰 Tambah</button>';
         html += '<button class="neon-btn small" onclick="openGoalModal(\'' + g.id +
@@ -1001,7 +1165,7 @@
   }
 
   // ============================================================
-  // 10. ANALYTICS FUNCTIONS
+  // 11. ANALYTICS FUNCTIONS
   // ============================================================
 
   function renderAnalytics() {
@@ -1110,7 +1274,7 @@
   }
 
   // ============================================================
-  // 11. CHART FUNCTIONS
+  // 12. CHART FUNCTIONS
   // ============================================================
 
   function drawLineChart(canvasId, data) {
@@ -1371,7 +1535,7 @@
   }
 
   // ============================================================
-  // 12. SETTINGS FUNCTIONS
+  // 13. SETTINGS FUNCTIONS
   // ============================================================
 
   function renderSettings() {
@@ -1435,7 +1599,7 @@
     html += '<div class="glass">';
     html +=
       '<h4 style="color:#88a0b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tentang</h4>';
-    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.0</p>';
+    html += '<p style="color:#e0f0ff;font-weight:600;">NEONVAULT v2.0.1</p>';
     html += '<p style="color:#88a0b8;font-size:0.85rem;">Personal Savings Manager</p>';
     html += '<p style="color:#88a0b8;font-size:0.75rem;margin-top:4px;">🔒 Data tersimpan secara lokal</p>';
     html +=
@@ -1457,7 +1621,6 @@
     var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia(
     '(prefers-color-scheme: dark)').matches);
     document.body.classList.toggle('light-mode', !isDark);
-    // Update toggle styles
     document.querySelectorAll('.settings-row .neon-btn').forEach(function(btn) {
       var text = btn.textContent.trim();
       btn.classList.toggle('active', text.includes(theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' :
@@ -1591,6 +1754,10 @@
     }
   }
 
+  // ============================================================
+  // 14. RENDER CURRENT PAGE
+  // ============================================================
+
   function renderCurrentPage() {
     switch (currentPage) {
       case 'dashboard':
@@ -1598,6 +1765,9 @@
         break;
       case 'goals':
         renderGoals();
+        break;
+      case 'goalDetail':
+        renderGoalDetail();
         break;
       case 'transactions':
         renderTransactions();
@@ -1634,23 +1804,81 @@
   }
 
   // ============================================================
-  // 13. NAVIGATION
+  // 15. NAVIGATION SETUP
   // ============================================================
 
   function setupNavigation() {
     document.querySelectorAll('.nav-item').forEach(function(item) {
       item.addEventListener('click', function() {
         var page = this.dataset.page;
+        currentGoalId = null;
         navigateTo(page);
       });
     });
 
-    // Handle manual page navigation from buttons
+    // Expose navigation functions globally
     window.navigateTo = navigateTo;
+    window.navigateToGoalDetail = navigateToGoalDetail;
   }
 
   // ============================================================
-  // 14. EXPOSE GLOBALLY
+  // 16. STYLE FOR BACK BUTTON
+  // ============================================================
+
+  function injectBackButtonStyles() {
+    var style = document.createElement('style');
+    style.textContent = `
+      .back-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(0, 229, 255, 0.15);
+        color: #00e5ff;
+        padding: 10px 20px;
+        border-radius: 60px;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s ease;
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.05);
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        min-height: 44px;
+        min-width: 44px;
+      }
+      .back-button:hover {
+        background: rgba(0, 229, 255, 0.1);
+        box-shadow: 0 0 30px rgba(0, 229, 255, 0.15);
+        transform: translateX(-4px);
+      }
+      .back-button:active {
+        transform: scale(0.97);
+      }
+      body.light-mode .back-button {
+        border-color: rgba(124, 77, 255, 0.2);
+        color: #7c4dff;
+      }
+      body.light-mode .back-button:hover {
+        background: rgba(124, 77, 255, 0.1);
+        box-shadow: 0 0 30px rgba(124, 77, 255, 0.15);
+      }
+      @media (max-width: 480px) {
+        .back-button {
+          padding: 8px 16px;
+          font-size: 0.85rem;
+          min-height: 40px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ============================================================
+  // 17. EXPOSE GLOBALLY
   // ============================================================
 
   window.openTransactionModal = openTransactionModal;
@@ -1671,17 +1899,21 @@
   window.openResetModal = openResetModal;
   window.confirmReset = confirmReset;
   window.navigateTo = navigateTo;
+  window.navigateToGoalDetail = navigateToGoalDetail;
   window.toggleReminder = toggleReminder;
   window.setChartPeriod = setChartPeriod;
 
   // ============================================================
-  // 15. INITIALIZATION
+  // 18. INITIALIZATION
   // ============================================================
 
   function init() {
     try {
       appData = loadData();
       applyTheme(appData.settings.theme || 'dark');
+
+      // Inject back button styles
+      injectBackButtonStyles();
 
       if (!appData.settings.onboardingComplete) {
         onboarding.classList.add('active');
@@ -1699,7 +1931,6 @@
         dashboard.classList.add('active');
         loadingScreen.classList.add('hidden');
         renderDashboard();
-        // Start reminders
         if (appData.settings.reminders) {
           startReminders();
         }
@@ -1740,6 +1971,7 @@
       });
 
       settingsToggle.addEventListener('click', function() {
+        currentGoalId = null;
         navigateTo('settings');
       });
 
@@ -1748,7 +1980,19 @@
 
       setupNavigation();
 
-      console.log('🚀 NEONVAULT V2 initialized successfully!');
+      // Handle initial hash
+      var hash = window.location.hash;
+      if (hash) {
+        var parts = hash.replace('#', '').split('/');
+        if (parts[0] === 'goalDetail' && parts[1]) {
+          currentGoalId = parts[1];
+          navigateTo('goalDetail');
+        } else if (parts[0]) {
+          navigateTo(parts[0]);
+        }
+      }
+
+      console.log('🚀 NEONVAULT V2.0.1 initialized successfully!');
       console.log('📊 Data:', appData);
 
     } catch (e) {
