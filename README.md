@@ -84,8 +84,8 @@ vercel
 • PWA ready
 ```
 
-## '🔧 Konfigurasi
-Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.'
+## 🔧 Konfigurasi
+Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.##
 
 
 ## manifest.json
