@@ -85,7 +85,7 @@ vercel
 ```
 
 ## 🔧 Konfigurasi
-Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.##
+Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.
 
 
 ## manifest.json
@@ -115,7 +115,7 @@ Semua pengaturan disimpan di LocalStorage dengan key neonvault_data_v2.##
   ]
 }
 ```
-*Made with ✦ by NEONVAULT Team*
+*Made with ✦ by NEONVAULT Team Dev JHON PRODUCTION*
 
 
 ---
